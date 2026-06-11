@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>ASL 수화 알파벳 레퍼런스 (sign_classifier.py 기준)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; margin: 0; padding: 20px; }
+  h1 { text-align: center; font-size: 1.2rem; color: #aaa; margin-bottom: 4px; }
+  p.note { text-align: center; font-size: 0.8rem; color: #666; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .card { background: #252525; border-radius: 10px; padding: 12px; border: 1px solid #333; }
+  .card.impossible { border-color: #553; background: #222200; }
+  .letter { font-size: 2.8rem; font-weight: 700; text-align: center; color: #4cf07a; line-height: 1; margin-bottom: 6px; }
+  .card.impossible .letter { color: #888; }
+  svg { display: block; margin: 0 auto 8px; }
+  .rule { font-size: 0.72rem; color: #bbb; line-height: 1.5; }
+  .rule b { color: #fff; }
+  .tag { display: inline-block; font-size: 0.62rem; padding: 1px 6px; border-radius: 10px; margin-bottom: 6px; }
+  .tag.fist { background: #2a3a55; color: #8ab; }
+  .tag.point { background: #2a4030; color: #8c8; }
+  .tag.open { background: #3a2a40; color: #b8a; }
+  .tag.pinch { background: #3a2a20; color: #cab; }
+  .tag.na { background: #333; color: #666; }
+  .finger-row { display: flex; justify-content: center; gap: 4px; margin: 8px 0; }
+  .finger { width: 22px; text-align: center; font-size: 0.6rem; color: #888; }
+  .finger .dot { width: 18px; height: 18px; border-radius: 50%; margin: 0 auto 2px; }
+  .dot.on { background: #4cf07a; }
+  .dot.off { background: #444; border: 1px solid #555; }
+  .dot.half { background: #888; }
+</style>
+</head>
+<body>
+<h1>ASL 수화 알파벳 — sign_classifier.py 판별 규칙 레퍼런스</h1>
+<p class="note">손가락 도트: 초록 = 펴기 / 회색 = 접기 &nbsp;|&nbsp; Wikipedia ASL과 일부 다를 수 있음</p>
+
+<div class="grid">
+
+<!-- A -->
+<div class="card">
+  <div class="letter">A</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">주먹을 쥐고 <b>엄지를 옆으로</b> 뻗기.<br>나머지 4손가락은 완전히 접기.</div>
+</div>
+
+<!-- B -->
+<div class="card">
+  <div class="letter">B</div>
+  <span class="tag open">펴기</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot on"></div>약지</div>
+    <div class="finger"><div class="dot on"></div>새끼</div>
+  </div>
+  <div class="rule">4손가락을 <b>위로 곧게 펴기</b>.<br>엄지는 손바닥 쪽으로 접기.</div>
+</div>
+
+<!-- C -->
+<div class="card">
+  <div class="letter">C</div>
+  <span class="tag open">곡선</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot half"></div>중지</div>
+    <div class="finger"><div class="dot half"></div>약지</div>
+    <div class="finger"><div class="dot half"></div>새끼</div>
+  </div>
+  <div class="rule">모든 손가락을 <b>C 모양으로 살짝 구부리기</b>.<br>완전히 펴지도, 접지도 않은 중간 상태.<br>엄지와 손가락이 마주 봄.</div>
+</div>
+
+<!-- D -->
+<div class="card">
+  <div class="letter">D</div>
+  <span class="tag point">검지</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule"><b>검지만 위로 세우기</b>.<br>엄지는 중지 끝에 닿도록 동그랗게.<br>약지·새끼는 접기.</div>
+</div>
+
+<!-- E -->
+<div class="card">
+  <div class="letter">E</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">4손가락을 <b>구부려 손바닥에 압착</b>.<br>손가락 끝이 MCP 관절보다 아래.<br>엄지는 손가락 아래로 끼워 넣기.<br>⚠ S/A와 구별: 엄지 위치 중요.</div>
+</div>
+
+<!-- F -->
+<div class="card">
+  <div class="letter">F</div>
+  <span class="tag pinch">핀치</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot on"></div>약지</div>
+    <div class="finger"><div class="dot on"></div>새끼</div>
+  </div>
+  <div class="rule"><b>엄지 끝 + 검지 끝을 붙이기</b> (OK 핀치).<br>중지·약지·새끼는 위로 펴기.</div>
+</div>
+
+<!-- G -->
+<div class="card">
+  <div class="letter">G</div>
+  <span class="tag point">수평</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">엄지+검지를 <b>수평 방향으로</b> 뻗기.<br>검지가 위가 아닌 <b>옆(수평)</b>을 가리켜야 함.<br>⚠ L과 차이: L은 검지가 위쪽.</div>
+</div>
+
+<!-- H -->
+<div class="card">
+  <div class="letter">H</div>
+  <span class="tag point">수평</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지를 <b>붙여서 수평</b>으로 뻗기.<br>손등이 위, 손가락이 옆을 향함.<br>⚠ V/U와 차이: 수직이 아닌 수평.</div>
+</div>
+
+<!-- I -->
+<div class="card">
+  <div class="letter">I</div>
+  <span class="tag point">새끼</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot on"></div>새끼</div>
+  </div>
+  <div class="rule"><b>새끼손가락만 위로 세우기</b>.<br>나머지 4손가락과 엄지는 접기.</div>
+</div>
+
+<!-- J -->
+<div class="card impossible">
+  <div class="letter">J</div>
+  <span class="tag na">모션 필요</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot on"></div>새끼</div>
+  </div>
+  <div class="rule">새끼손가락으로 <b>J 모양을 그리는 동작</b>.<br>정적 판별 불가 — <b>현재 미지원</b>.<br>(I 자세에서 손을 움직여 J 그리기)</div>
+</div>
+
+<!-- K -->
+<div class="card">
+  <div class="letter">K</div>
+  <span class="tag point">V+엄지</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지 위로 세우고 <b>엄지를 두 손가락 사이</b>에 끼워 넣기.<br>⚠ V와 차이: 엄지 위치.</div>
+</div>
+
+<!-- L -->
+<div class="card">
+  <div class="letter">L</div>
+  <span class="tag point">L 모양</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">엄지는 <b>수평으로</b>, 검지는 <b>수직 위로</b>.<br>L 자 모양 만들기.<br>⚠ G와 차이: 검지가 위쪽을 향해야 함.</div>
+</div>
+
+<!-- M -->
+<div class="card">
+  <div class="letter">M</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot half"></div>중지</div>
+    <div class="finger"><div class="dot half"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">엄지를 손바닥에 두고 <b>검지·중지·약지 3개를 엄지 위로 접기</b>.<br>새끼는 접기.<br>⚠ N과 차이: 손가락 3개 vs 2개.</div>
+</div>
+
+<!-- N -->
+<div class="card">
+  <div class="letter">N</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot half"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">엄지를 손바닥에 두고 <b>검지·중지 2개를 엄지 위로 접기</b>.<br>약지·새끼는 접기.<br>⚠ M과 차이: 손가락 2개.</div>
+</div>
+
+<!-- O -->
+<div class="card">
+  <div class="letter">O</div>
+  <span class="tag pinch">O 모양</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot half"></div>중지</div>
+    <div class="finger"><div class="dot half"></div>약지</div>
+    <div class="finger"><div class="dot half"></div>새끼</div>
+  </div>
+  <div class="rule">모든 손가락 끝을 <b>엄지 끝에 모아 O 모양</b>.<br>손가락 끝과 엄지 끝 거리가 매우 가까워야 함.</div>
+</div>
+
+<!-- P -->
+<div class="card">
+  <div class="letter">P</div>
+  <span class="tag point">아래 방향</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">K 모양에서 <b>손목을 아래로 꺾어</b> 검지가 아래를 향하게.<br>엄지+검지+중지 펴기, 손가락은 아래 방향.</div>
+</div>
+
+<!-- Q -->
+<div class="card">
+  <div class="letter">Q</div>
+  <span class="tag point">아래 방향</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">G 모양에서 <b>손목을 아래로 꺾어</b> 검지가 아래를 향하게.<br>엄지+검지 펴기, 손가락은 아래 방향.</div>
+</div>
+
+<!-- R -->
+<div class="card">
+  <div class="letter">R</div>
+  <span class="tag point">교차</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지를 위로 세우고 <b>두 손가락을 교차(X 모양)</b>.<br>⚠ V/U와 차이: 손가락이 겹쳐야 함.</div>
+</div>
+
+<!-- S -->
+<div class="card">
+  <div class="letter">S</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">완전한 주먹, <b>엄지를 손가락 위로 감싸기</b>.<br>엄지가 손가락들의 앞쪽(검지~약지 위)에 위치.<br>⚠ A와 차이: 엄지가 앞이 아닌 위.</div>
+</div>
+
+<!-- T -->
+<div class="card">
+  <div class="letter">T</div>
+  <span class="tag fist">주먹</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot half"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">주먹에서 <b>엄지를 검지·중지 사이로 끼우기</b>.<br>엄지 끝이 검지 MCP 관절보다 높이 올라옴.</div>
+</div>
+
+<!-- U -->
+<div class="card">
+  <div class="letter">U</div>
+  <span class="tag point">두 손가락</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지를 <b>붙여서 위로 세우기</b>.<br>두 손가락이 가까이 붙어야 함.<br>⚠ V와 차이: 손가락을 벌리면 V.</div>
+</div>
+
+<!-- V -->
+<div class="card">
+  <div class="letter">V</div>
+  <span class="tag point">V 모양</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지를 위로 세우고 <b>V 자로 벌리기</b>.<br>두 손가락 끝의 간격이 충분히 넓어야 함.<br>⚠ U와 차이: 손가락을 벌려야 함.</div>
+</div>
+
+<!-- W -->
+<div class="card">
+  <div class="letter">W</div>
+  <span class="tag point">세 손가락</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot on"></div>중지</div>
+    <div class="finger"><div class="dot on"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지+중지+약지 <b>3개를 위로 세우기</b>.<br>엄지와 새끼는 접기.</div>
+</div>
+
+<!-- X -->
+<div class="card">
+  <div class="letter">X</div>
+  <span class="tag point">갈고리</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot half"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지를 <b>갈고리(훅) 모양으로 구부리기</b>.<br>PIP 관절은 펴되 DIP 관절에서 아래로 구부림.<br>나머지 손가락은 모두 접기.</div>
+</div>
+
+<!-- Y -->
+<div class="card">
+  <div class="letter">Y</div>
+  <span class="tag point">샤카</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot on"></div>엄지</div>
+    <div class="finger"><div class="dot off"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot on"></div>새끼</div>
+  </div>
+  <div class="rule"><b>엄지+새끼만 펴기</b> (샤카 🤙).<br>검지·중지·약지는 완전히 접기.</div>
+</div>
+
+<!-- Z -->
+<div class="card impossible">
+  <div class="letter">Z</div>
+  <span class="tag na">모션 필요</span>
+  <div class="finger-row">
+    <div class="finger"><div class="dot off"></div>엄지</div>
+    <div class="finger"><div class="dot on"></div>검지</div>
+    <div class="finger"><div class="dot off"></div>중지</div>
+    <div class="finger"><div class="dot off"></div>약지</div>
+    <div class="finger"><div class="dot off"></div>새끼</div>
+  </div>
+  <div class="rule">검지로 <b>Z 모양을 공중에 그리는 동작</b>.<br>정적 판별 불가 — <b>현재 미지원</b>.<br>(D 자세에서 손을 움직여 Z 그리기)</div>
+</div>
+
+</div>
+
+<p style="text-align:center; color:#444; font-size:0.75rem; margin-top:32px;">
+  도트: 초록=펴기, 반투명=중간(구부림), 회색=접기 &nbsp;|&nbsp;
+  어두운 카드(J, Z)는 현재 미지원
+</p>
+</body>
+</html>
