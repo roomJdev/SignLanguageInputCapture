@@ -6,21 +6,27 @@ J, Z는 동작(모션)이 필요해 정적 판별 불가 — '?' 반환.
 
 import numpy as np
 import hand_detector as HD
-from calibration import normalize
+from features import extract
 
 
-# 보정 데이터 기반 최근접 이웃 분류
-_DISTANCE_THRESHOLD = 1.2   # 이 값보다 멀면 '?' 반환
+# 모든 샘플과 비교해 최솟값 거리 사용 — 거리 임계값
+_DISTANCE_THRESHOLD = 1.5
 
 
 def classify_calibrated(lm: np.ndarray, cal_data: dict) -> str:
-    """보정 데이터와의 유클리드 거리로 가장 가까운 알파벳 반환."""
-    vec = normalize(lm)
+    """보정 샘플 전체와 비교해 최근접 알파벳 반환.
+
+    각 알파벳마다 저장된 30개 샘플 모두와 거리를 재고,
+    그 중 최솟값이 가장 작은 알파벳을 선택.
+    """
+    vec = extract(lm)
     best_letter, best_dist = "?", float("inf")
-    for letter, ref_vec in cal_data.items():
-        dist = float(np.linalg.norm(vec - ref_vec))
-        if dist < best_dist:
-            best_dist = dist
+    for letter, samples in cal_data.items():
+        # samples: (N, 25) — 모든 샘플과의 거리 중 최솟값
+        dists = np.linalg.norm(samples - vec, axis=1)
+        min_dist = float(dists.min())
+        if min_dist < best_dist:
+            best_dist = min_dist
             best_letter = letter
     return best_letter if best_dist < _DISTANCE_THRESHOLD else "?"
 
