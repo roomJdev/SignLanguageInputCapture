@@ -25,16 +25,16 @@ def save_calibration(data: dict) -> None:
     print(f"보정 데이터 저장 완료: {CALIBRATION_PATH}")
 
 
-def run_calibration(detector) -> dict:
+def run_calibration(detector, camera_index: int = 0) -> dict:
     """보정 세션 실행. 완료된 데이터 dict 반환.
 
     각 알파벳마다 30개 샘플을 저장 (평균 아님).
     k-NN에서 모든 샘플과 비교해 최소 거리로 분류.
     스킵한 알파벳은 기존 보정 데이터를 유지.
     """
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
-        raise RuntimeError("카메라를 열 수 없습니다.")
+        raise RuntimeError(f"카메라 [{camera_index}]를 열 수 없습니다.")
 
     # 기존 데이터를 베이스로 시작 — 새로 캡처한 것만 덮어씀
     calibration_data: dict[str, np.ndarray] = load_calibration() or {}

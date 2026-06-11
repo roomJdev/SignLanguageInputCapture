@@ -15,26 +15,44 @@ MediaPipe Hand Landmarker 기반으로 손 관절 21개 좌표를 추출하고, 
 ## 요구 사항
 
 - Python 3.11+
-- macOS (AVFoundation 카메라 감지 사용)
-- 웹캠 또는 Continuity Camera (iPhone)
+- 웹캠 (macOS 내장 카메라, Continuity Camera, 외장 USB 웹캠 모두 지원)
+- Windows / macOS 지원
 
 ## 설치
 
+**macOS**
 ```bash
 git clone https://github.com/<your-username>/SignLanguageInputCapture.git
 cd SignLanguageInputCapture
 
 python -m venv .venv
 source .venv/bin/activate
-
 pip install -r requirements.txt
 ```
+
+**Windows**
+```bash
+git clone https://github.com/<your-username>/SignLanguageInputCapture.git
+cd SignLanguageInputCapture
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+> `pyobjc-framework-AVFoundation`은 macOS에서만 자동 설치됩니다. Windows에서는 설치되지 않습니다.
 
 ## 실행
 
 ```bash
-# 첫 실행 — 보정 세션 자동 시작 후 인식
+# 첫 실행 — 카메라 자동 감지, 보정 세션 후 인식 시작
 python main.py
+
+# 카메라가 여러 개일 때 직접 지정
+python main.py --camera 1
+
+# 연결된 카메라 목록 확인
+python main.py --list
 
 # 보정 재수행
 python main.py --calibrate
