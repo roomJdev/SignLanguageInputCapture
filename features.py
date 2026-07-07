@@ -54,3 +54,28 @@ def extract(lm: np.ndarray) -> np.ndarray:
     wrist_dists = [np.linalg.norm(pts[t] - pts[WRIST]) / scale for t in TIPS]
 
     return np.array(bend + tip_pairs + wrist_dists, dtype=np.float32)
+
+
+MOTION_FRAME_DIM = len(TIPS) * 2   # 5개 손가락 끝 × (x, y) = 10차원
+
+
+def extract_motion_frame(lm: np.ndarray) -> np.ndarray:
+    """모션 캡처용 프레임 단위 특징 — 손목 기준 정규화된 5개 손가락 끝 (x, y) 위치. (10차원)"""
+    pts = lm[:, :2]
+    wrist = pts[WRIST]
+    scale = np.linalg.norm(lm[MIDDLE_MCP][:2] - wrist) + 1e-8
+    rel = (pts[TIPS] - wrist) / scale   # (5, 2)
+    return rel.reshape(-1).astype(np.float32)   # (10,)
+
+
+def extract_tip_frame(lm: np.ndarray, tip_idx: int) -> np.ndarray:
+    """단일 손가락 끝 궤적용 프레임 특징 — 손목 기준 정규화된 (x, y). (2차원)
+
+    J/Z처럼 특정 손가락 하나의 궤적만 추적할 때 사용.
+    전체 손끝 5개를 쓰는 extract_motion_frame보다 DTW 비교가 훨씬 선별적이다.
+    """
+    pts = lm[:, :2]
+    wrist = pts[WRIST]
+    scale = np.linalg.norm(lm[MIDDLE_MCP][:2] - wrist) + 1e-8
+    rel = (pts[tip_idx] - wrist) / scale   # (2,)
+    return rel.astype(np.float32)

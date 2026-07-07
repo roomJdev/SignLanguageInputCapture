@@ -16,7 +16,7 @@ RING_MCP, RING_PIP, RING_DIP, RING_TIP = 13, 14, 15, 16
 PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP = 17, 18, 19, 20
 
 # hand_landmarker.task 파일 다운로드 경로
-_MODEL_PATH = "hand_landmarker.task"
+_MODEL_PATH = "resources/hand_landmarker.task"
 
 # 연결선 쌍 (시각화용)
 _CONNECTIONS = [

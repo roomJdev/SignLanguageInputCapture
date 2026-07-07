@@ -13,13 +13,13 @@ from features import extract
 _DISTANCE_THRESHOLD = 1.5
 
 
-def classify_calibrated(lm: np.ndarray, cal_data: dict) -> str:
-    """보정 샘플 전체와 비교해 최근접 알파벳 반환.
+def classify_calibrated_vec(vec: np.ndarray, cal_data: dict) -> str:
+    """이미 추출된 25차원 feature vector로 분류 (extract() 중복 호출 방지용).
 
     각 알파벳마다 저장된 30개 샘플 모두와 거리를 재고,
     그 중 최솟값이 가장 작은 알파벳을 선택.
+    여러 모델을 비교할 때(ml_models.py) extract()를 한 번만 호출하기 위해 분리.
     """
-    vec = extract(lm)
     best_letter, best_dist = "?", float("inf")
     for letter, samples in cal_data.items():
         # samples: (N, 25) — 모든 샘플과의 거리 중 최솟값
@@ -29,6 +29,11 @@ def classify_calibrated(lm: np.ndarray, cal_data: dict) -> str:
             best_dist = min_dist
             best_letter = letter
     return best_letter if best_dist < _DISTANCE_THRESHOLD else "?"
+
+
+def classify_calibrated(lm: np.ndarray, cal_data: dict) -> str:
+    """보정 샘플 전체와 비교해 최근접 알파벳 반환 — 21×3 랜드마크 배열 입력."""
+    return classify_calibrated_vec(extract(lm), cal_data)
 
 
 # ---------------------------------------------------------------------------
