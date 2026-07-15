@@ -108,6 +108,7 @@ _MOTION_DISPLAY_SEC = 1.0    # 인식된 모션 글자를 화면에 유지하는
 _MOTION_LETTERS = ["J", "Z"] # 시작 포즈로 감지하는 모션 심볼 목록
 
 _GUESS_STABLE_FRAMES = 10    # Guess 모드에서 글자가 이 프레임 수만큼 유지돼야 버퍼에 추가
+_WI_STABLE_FRAMES    = 10    # Word Injection 모드 동일 기준
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +255,16 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     _guess_num_cooldown_until = 0.0  # 선택 직후 재발동 방지 타이머
     _guess_candidates_frozen: list[str] = []  # 숫자 수화 감지 시작 시 freeze된 후보
 
+    # ── Word Injection 모드 상태 ─────────────────────────────────────
+    wi_mode = False
+    wi_buffer = ""
+    wi_candidates: list[str] = []
+    wi_matched_prefix = ""
+    _wi_stable_letter = ""
+    _wi_stable_count = 0
+    _wi_last_added = ""
+
+
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
     word_suggester.preload()
 
@@ -393,6 +404,9 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                                     if guess_mode:
                                         guess_buffer += ml
                                         guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer)
+                                    elif wi_mode:
+                                        wi_buffer += ml
+                                        wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer)
                                     else:
                                         injected = injector.inject_now(ml)
                                         if injected:
@@ -418,15 +432,31 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                             _guess_last_added = current_letter
                             guess_buffer += current_letter
                             guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer)
-                            # 글자 추가 직후 number sign 트래커 리셋 — L≈1 같은 오인식 방지
                             _guess_num_letter = ""
                             _guess_num_count = 0
                             _guess_num_triggered = ""
                             _guess_candidates_frozen = []
-                            _guess_num_cooldown_until = now + 0.8  # 0.8초 후부터 숫자 수화 인식
+                            _guess_num_cooldown_until = now + 0.8
                     else:
                         _guess_stable_letter = ""
                         _guess_stable_count = 0
+                elif wi_mode:
+                    # Word Injection 모드: guess_buffer와 동일한 누적 방식
+                    if current_letter not in ("?", ""):
+                        if current_letter == _wi_stable_letter:
+                            _wi_stable_count += 1
+                        else:
+                            _wi_stable_letter = current_letter
+                            _wi_stable_count = 1
+                            _wi_last_added = ""
+                        if (_wi_stable_count >= _WI_STABLE_FRAMES
+                                and _wi_last_added != current_letter):
+                            _wi_last_added = current_letter
+                            wi_buffer += current_letter
+                            wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer)
+                    else:
+                        _wi_stable_letter = ""
+                        _wi_stable_count = 0
                 else:
                     injected = injector.update(current_letter)
                     if injected == "SPACE":
@@ -518,6 +548,68 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                             cv2.FONT_HERSHEY_SIMPLEX, 0.72, (160, 160, 255), 2)
                 _btn_rects.append((action, None, (rx, sb_y, rx + SB_W, sb_y + SB_H)))
 
+        # Word Injection 모드 패널
+        if wi_mode:
+            AMBER_BRIGHT = (50, 200, 255)   # 황금빛 (BGR)
+            AMBER_MID    = (60, 180, 230)
+            AMBER_DIM    = (80, 150, 180)
+
+            BTN_W, BTN_H = 220, 68
+            BTN_GAP = 16
+            total_w = 3 * BTN_W + 2 * BTN_GAP
+            bx_start = w // 2 - total_w // 2
+            by = int(h * 0.60)
+
+            # 버퍼 표시
+            wi_cursor = "_" if int(now * 2) % 2 == 0 else " "
+            if not wi_buffer:
+                wi_buf_label = "[ WORD INJECT ]"
+                wi_buf_col = AMBER_BRIGHT
+            elif wi_matched_prefix == wi_buffer.lower():
+                wi_buf_label = f"[ {wi_buffer}{wi_cursor} ]"
+                wi_buf_col = AMBER_BRIGHT
+            else:
+                matched_upper = wi_matched_prefix.upper().lstrip("~")
+                tail = wi_buffer[len(matched_upper):]
+                wi_buf_label = f"[ {matched_upper} +{tail}{wi_cursor} ]"
+                wi_buf_col = (80, 200, 255)
+            buf_tw = cv2.getTextSize(wi_buf_label, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0][0]
+            cv2.putText(annotated, wi_buf_label, (w // 2 - buf_tw // 2, by - 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, wi_buf_col, 2)
+
+            for ci in range(3):
+                bx = bx_start + ci * (BTN_W + BTN_GAP)
+                has_cand = ci < len(wi_candidates)
+                label = wi_candidates[ci] if has_cand else "--"
+                num_label = f"{ci + 1}"
+                bg_col    = (10, 35, 55) if has_cand else (15, 15, 15)
+                border_col = AMBER_MID if has_cand else (40, 40, 40)
+                txt_col    = AMBER_BRIGHT if has_cand else (50, 50, 50)
+                num_col    = AMBER_DIM if has_cand else (40, 40, 40)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), bg_col, -1)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), border_col, 2)
+                cv2.putText(annotated, num_label, (bx + 10, by + 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, num_col, 1)
+                tw = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.85, 2)[0][0]
+                cv2.putText(annotated, label, (bx + BTN_W // 2 - tw // 2, by + BTN_H - 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.85, txt_col, 2)
+
+            # BKSP 버튼만 (Space는 pynput 선택 후 자동)
+            sb_y = by + BTN_H + 18
+            SB_W, SB_H = 160, 52
+            bs_x = w // 2 - SB_W // 2
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), (18, 18, 45), -1)
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), (90, 90, 180), 2)
+            tw = cv2.getTextSize("BKSP", cv2.FONT_HERSHEY_SIMPLEX, 0.72, 2)[0][0]
+            cv2.putText(annotated, "BKSP", (bs_x + SB_W // 2 - tw // 2, sb_y + 34),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.72, (160, 160, 255), 2)
+            _btn_rects.append(("wi_backspace", None, (bs_x, sb_y, bs_x + SB_W, sb_y + SB_H)))
+
+            hint = "switch here, press 1/2/3  ->  auto-returns to target app"
+            ht = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
+            cv2.putText(annotated, hint, (w // 2 - ht // 2, sb_y + SB_H + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, AMBER_DIM, 1)
+
         # 텍스트 버퍼 영역 — 모드 바 바로 위
         cv2.rectangle(annotated, (0, h - 128), (w, h - 96), (20, 20, 20), -1)
         # 너무 길면 뒤에서 잘라서 표시
@@ -529,12 +621,13 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
 
         # 좌하단 — 모드/보정 상태 + 단축키 안내 (별도 배경)
         mode_label = "NUMBER" if symbol_mode == "number" else "LETTER"
-        guess_label = "  GUESS:ON" if guess_mode else ""
+        extra_label = ("  GUESS:ON" if guess_mode else "  WORD-INJECT:ON" if wi_mode else "")
         cv2.rectangle(annotated, (0, h - 96), (w, h), (0, 0, 0), -1)
-        cv2.putText(annotated, f"Mode: {mode_label}  /  {cal_mode}{guess_label}", (10, h - 68),
+        cv2.putText(annotated, f"Mode: {mode_label}  /  {cal_mode}{extra_label}", (10, h - 68),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_MID, 2)
         inject_label = "INJECT:ON" if injector.enabled else "INJECT:OFF"
-        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess", (10, h - 40),
+        wi_label     = "WI:ON"     if wi_mode         else "WI:OFF"
+        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess  w: {wi_label}", (10, h - 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_DIM, 2)
         cv2.putText(annotated, "t/y: test (random)  u: sessions  p: profile  q: quit", (10, h - 14),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_DIM, 2)
@@ -557,6 +650,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if action == "candidate" and guess_mode:
                 if arg < len(guess_candidates):
                     word = guess_candidates[arg]
+                    injector.inject_string(word + " ")
                     text_buffer += word + " "
                     guess_buffer = ""
                     guess_candidates = []
@@ -567,8 +661,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                     print(f"[guess] 클릭 선택: {word}")
             elif action == "space" and guess_mode:
                 if guess_buffer:
+                    injector.inject_string(guess_buffer + " ")
                     text_buffer += guess_buffer + " "
                 else:
+                    injector.inject_string(" ")
                     text_buffer += " "
                 guess_buffer = ""
                 guess_candidates = []
@@ -577,22 +673,58 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _guess_last_added = ""
             elif action == "backspace" and guess_mode:
                 guess_buffer = guess_buffer[:-1]
-                guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer) if guess_buffer else []
+                guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer) if guess_buffer else ([], "")
                 _guess_stable_letter = ""
                 _guess_stable_count = 0
                 _guess_last_added = ""
+            elif action == "wi_backspace" and wi_mode:
+                wi_buffer = wi_buffer[:-1]
+                wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer) if wi_buffer else ([], "")
+                _wi_stable_letter = ""
+                _wi_stable_count = 0
+                _wi_last_added = ""
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
         if key == ord("i"):
             injector.toggle()
+        if key == ord("w"):
+            wi_mode = not wi_mode
+            if wi_mode:
+                guess_mode = False
+                guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
+            else:
+                wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+            print(f"[wi] Word Injection 모드 {'ON' if wi_mode else 'OFF'}")
 
-        # Guess 모드 — 키보드 1/2/3 후보 선택 (injection 없이 text_buffer만 업데이트)
+        # Word Injection 모드 — 키보드 1/2/3 후보 선택 후 Cmd+Tab으로 이전 앱 복귀
+        if wi_mode and key in (ord("1"), ord("2"), ord("3")):
+            idx = key - ord("1")
+            if idx < len(wi_candidates):
+                word = wi_candidates[idx]
+                import pyautogui as _pag
+                import time as _time
+                _pag.hotkey("command", "tab")   # 타겟 앱으로 포커스 복귀
+                _time.sleep(0.2)
+                _pag.typewrite(word + " ", interval=0.05)
+                _time.sleep(0.1)
+                _pag.hotkey("command", "tab")   # OpenCV 창으로 복귀
+                text_buffer += word + " "
+                wi_buffer = ""
+                wi_candidates = []
+                wi_matched_prefix = ""
+                _wi_stable_letter = ""
+                _wi_stable_count = 0
+                _wi_last_added = ""
+                print(f"[wi] 주입: {word}")
+
+        # Guess 모드 — 키보드 1/2/3 후보 선택
         if guess_mode and key in (ord("1"), ord("2"), ord("3")):
             idx = key - ord("1")
             if idx < len(guess_candidates):
                 word = guess_candidates[idx]
+                injector.inject_string(word + " ")
                 text_buffer += word + " "
                 guess_buffer = ""
                 guess_candidates = []
@@ -621,7 +753,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         if key == 127:
             if guess_mode:
                 guess_buffer = guess_buffer[:-1]
-                guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer) if guess_buffer else []
+                guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer) if guess_buffer else ([], "")
                 _guess_stable_letter = ""
                 _guess_stable_count = 0
                 _guess_last_added = ""
@@ -633,12 +765,11 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             continue
         if key == ord("g"):
             guess_mode = not guess_mode
-            if not guess_mode:
-                guess_buffer = ""
-                guess_candidates = []
-                _guess_stable_letter = ""
-                _guess_stable_count = 0
-                _guess_last_added = ""
+            if guess_mode:
+                wi_mode = False   # 상호 배타
+                wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+            else:
+                guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
             print(f"[guess] 모드 {'ON' if guess_mode else 'OFF'}")
         if key == ord("e"):
             symbol_mode = "number" if symbol_mode == "letter" else "letter"

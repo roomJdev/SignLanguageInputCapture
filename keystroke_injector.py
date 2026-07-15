@@ -76,8 +76,9 @@ class KeystrokeInjector:
         """문자열을 순서대로 즉시 주입 (guess mode 단어 완성용).
 
         pyautogui.typewrite 로 글자 간 50ms 간격을 두어 드롭 방지.
+        enabled 상태와 무관하게 동작 — 단어 선택은 명시적 사용자 액션이므로 항상 주입.
         """
-        if not self.enabled or not s:
+        if not s:
             return
         if _PYAUTOGUI_AVAILABLE:
             pyautogui.typewrite(s, interval=0.05)
