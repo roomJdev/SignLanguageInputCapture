@@ -26,6 +26,9 @@ MediaPipe Hand Landmarker 기반으로 손 관절 21개 좌표를 추출하고, 
 - 웹캠 (macOS 내장 카메라, Continuity Camera, 외장 USB 웹캠 모두 지원)
 - macOS (키스트로크 주입은 macOS 전용, pyautogui 사용)
 
+> **Center Stage (M4 MacBook Pro)**: 이 프로젝트의 기본 실험 설정은 Center Stage **OFF**입니다. Center Stage가 활성화되면 피사체 추적을 위한 실시간 크롭·줌이 발생해 손 랜드마크의 픽셀 크기와 위치가 지속적으로 변동되며, 특히 J·Z 모션 인식의 궤적 정확도에 영향을 줄 수 있습니다. ON 상태에서도 동작하지만 인식 성능은 보장되지 않습니다.
+> 설정 경로: 시스템 설정 → 카메라 → Center Stage
+
 ## 설치
 
 ```bash
