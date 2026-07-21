@@ -184,7 +184,8 @@ def _filter_by_symbol_mode(cal_data: dict | None, symbol_mode: str) -> dict | No
 
 
 def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | None,
-        camera_index: int, inject: bool = False, start_guess: bool = False) -> None:
+        camera_index: int, inject: bool = False, start_guess: bool = False,
+        start_ed: bool = False) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print(f"카메라 [{camera_index}]를 열 수 없습니다. --list 로 가용 카메라를 확인하세요.")
@@ -263,6 +264,16 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     _wi_stable_letter = ""
     _wi_stable_count = 0
     _wi_last_added = ""
+
+    # ── ED 모드 상태 ─────────────────────────────────────────────────
+    ed_mode = start_ed   # X키로 토글 — guess/wi 모드와 독립적으로 동작
+    ed_buffer = ""
+    ed_candidates: list[str] = []
+    ed_matched_prefix = ""
+    _ed_stable_letter = ""
+    _ed_stable_count = 0
+    _ed_last_added = ""
+    _ED_STABLE_FRAMES = 10
 
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
@@ -407,6 +418,9 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                                     elif wi_mode:
                                         wi_buffer += ml
                                         wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer)
+                                    elif ed_mode:
+                                        ed_buffer += ml
+                                        ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
                                     else:
                                         injected = injector.inject_now(ml)
                                         if injected:
@@ -457,6 +471,23 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                     else:
                         _wi_stable_letter = ""
                         _wi_stable_count = 0
+                elif ed_mode:
+                    # ED 모드: suggest_ed 기반 단어 추천
+                    if current_letter not in ("?", ""):
+                        if current_letter == _ed_stable_letter:
+                            _ed_stable_count += 1
+                        else:
+                            _ed_stable_letter = current_letter
+                            _ed_stable_count = 1
+                            _ed_last_added = ""
+                        if (_ed_stable_count >= _ED_STABLE_FRAMES
+                                and _ed_last_added != current_letter):
+                            _ed_last_added = current_letter
+                            ed_buffer += current_letter
+                            ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
+                    else:
+                        _ed_stable_letter = ""
+                        _ed_stable_count = 0
                 else:
                     injected = injector.update(current_letter)
                     if injected == "SPACE":
@@ -610,6 +641,68 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             cv2.putText(annotated, hint, (w // 2 - ht // 2, sb_y + SB_H + 22),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, AMBER_DIM, 1)
 
+        # ED 모드 패널 — 청록색 계열
+        if ed_mode:
+            ED_BRIGHT = (220, 210, 80)   # 청록 (BGR)
+            ED_MID    = (180, 175, 60)
+            ED_DIM    = (130, 125, 50)
+
+            BTN_W, BTN_H = 220, 68
+            BTN_GAP = 16
+            total_w = 3 * BTN_W + 2 * BTN_GAP
+            bx_start = w // 2 - total_w // 2
+            by = int(h * 0.60)
+
+            # 버퍼 표시
+            ed_cursor = "_" if int(now * 2) % 2 == 0 else " "
+            if not ed_buffer:
+                ed_buf_label = "[ ED MODE ]"
+                ed_buf_col = ED_BRIGHT
+            elif ed_matched_prefix.startswith("ed~"):
+                ed_buf_label = f"[ {ed_buffer}{ed_cursor} ] (ed)"
+                ed_buf_col = (80, 210, 255)
+            else:
+                ed_buf_label = f"[ {ed_buffer}{ed_cursor} ]"
+                ed_buf_col = ED_BRIGHT
+            buf_tw = cv2.getTextSize(ed_buf_label, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0][0]
+            cv2.putText(annotated, ed_buf_label, (w // 2 - buf_tw // 2, by - 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, ed_buf_col, 2)
+
+            for ci in range(3):
+                bx = bx_start + ci * (BTN_W + BTN_GAP)
+                has_cand = ci < len(ed_candidates)
+                label = ed_candidates[ci] if has_cand else "--"
+                num_label = f"{ci + 1}"
+                bg_col     = (10, 40, 40) if has_cand else (15, 15, 15)
+                border_col = ED_MID if has_cand else (40, 40, 40)
+                txt_col    = ED_BRIGHT if has_cand else (50, 50, 50)
+                num_col    = ED_DIM if has_cand else (40, 40, 40)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), bg_col, -1)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), border_col, 2)
+                cv2.putText(annotated, num_label, (bx + 10, by + 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, num_col, 1)
+                tw = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.85, 2)[0][0]
+                cv2.putText(annotated, label, (bx + BTN_W // 2 - tw // 2, by + BTN_H - 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.85, txt_col, 2)
+                if has_cand:
+                    _btn_rects.append(("candidate", ci, (bx, by, bx + BTN_W, by + BTN_H)))
+
+            # BKSP 버튼
+            sb_y = by + BTN_H + 18
+            SB_W, SB_H = 160, 52
+            bs_x = w // 2 - SB_W // 2
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), (18, 35, 35), -1)
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), ED_MID, 2)
+            tw = cv2.getTextSize("BKSP", cv2.FONT_HERSHEY_SIMPLEX, 0.72, 2)[0][0]
+            cv2.putText(annotated, "BKSP", (bs_x + SB_W // 2 - tw // 2, sb_y + 34),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.72, ED_BRIGHT, 2)
+            _btn_rects.append(("backspace", None, (bs_x, sb_y, bs_x + SB_W, sb_y + SB_H)))
+
+            hint = "sign prefix  ->  1/2/3 to select  (edit distance fallback)"
+            ht = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
+            cv2.putText(annotated, hint, (w // 2 - ht // 2, sb_y + SB_H + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, ED_DIM, 1)
+
         # 텍스트 버퍼 영역 — 모드 바 바로 위
         cv2.rectangle(annotated, (0, h - 128), (w, h - 96), (20, 20, 20), -1)
         # 너무 길면 뒤에서 잘라서 표시
@@ -621,14 +714,15 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
 
         # 좌하단 — 모드/보정 상태 + 단축키 안내 (별도 배경)
         mode_label = "NUMBER" if symbol_mode == "number" else "LETTER"
-        extra_label = ("  GUESS:ON" if guess_mode else "  WORD-INJECT:ON" if wi_mode else "")
+        extra_label = ("  GUESS:ON" if guess_mode else "  WORD-INJECT:ON" if wi_mode else "  ED:ON" if ed_mode else "")
         cv2.rectangle(annotated, (0, h - 96), (w, h), (0, 0, 0), -1)
         cv2.putText(annotated, f"Mode: {mode_label}  /  {cal_mode}{extra_label}", (10, h - 68),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_MID, 2)
         inject_label = "INJECT:ON" if injector.enabled else "INJECT:OFF"
         wi_label     = "WI:ON"     if wi_mode         else "WI:OFF"
-        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess  w: {wi_label}", (10, h - 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_DIM, 2)
+        ed_label     = "ED:ON"     if ed_mode         else "ED:OFF"
+        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess  w: {wi_label}  x: {ed_label}", (10, h - 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.60, GREEN_DIM, 2)
         cv2.putText(annotated, "t/y: test (random)  u: sessions  p: profile  q: quit", (10, h - 14),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_DIM, 2)
 
@@ -683,6 +777,12 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _wi_stable_letter = ""
                 _wi_stable_count = 0
                 _wi_last_added = ""
+            elif action == "backspace" and ed_mode:
+                ed_buffer = ed_buffer[:-1]
+                ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer) if ed_buffer else ([], "")
+                _ed_stable_letter = ""
+                _ed_stable_count = 0
+                _ed_last_added = ""
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -693,10 +793,39 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             wi_mode = not wi_mode
             if wi_mode:
                 guess_mode = False
+                ed_mode = False
                 guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
+                ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
             else:
                 wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
             print(f"[wi] Word Injection 모드 {'ON' if wi_mode else 'OFF'}")
+
+        # ED 모드 토글 (X키)
+        if key == ord("x"):
+            ed_mode = not ed_mode
+            if ed_mode:
+                guess_mode = False
+                wi_mode = False
+                guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
+                wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+            else:
+                ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
+            print(f"[ed] ED 모드 {'ON' if ed_mode else 'OFF'}")
+
+        # ED 모드 — 키보드 1/2/3 후보 선택
+        if ed_mode and key in (ord("1"), ord("2"), ord("3")):
+            idx = key - ord("1")
+            if idx < len(ed_candidates):
+                word = ed_candidates[idx]
+                injector.inject_string(word + " ")
+                text_buffer += word + " "
+                ed_buffer = ""
+                ed_candidates = []
+                ed_matched_prefix = ""
+                _ed_stable_letter = ""
+                _ed_stable_count = 0
+                _ed_last_added = ""
+                print(f"[ed] 선택: {word}")
 
         # Word Injection 모드 — 키보드 1/2/3 후보 선택 후 Cmd+Tab으로 이전 앱 복귀
         if wi_mode and key in (ord("1"), ord("2"), ord("3")):
@@ -766,8 +895,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         if key == ord("g"):
             guess_mode = not guess_mode
             if guess_mode:
-                wi_mode = False   # 상호 배타
+                wi_mode = False
+                ed_mode = False
                 wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+                ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
             else:
                 guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
             print(f"[guess] 모드 {'ON' if guess_mode else 'OFF'}")
@@ -929,6 +1060,9 @@ def main() -> None:
         elif mode == "live_guess":
             run(detector, active_cal, active_motion_cal, camera_index,
                 inject=True, start_guess=True)
+        elif mode == "live_ed":
+            run(detector, active_cal, active_motion_cal, camera_index,
+                inject=True, start_ed=True)
 
         elif mode in ("test_ordered", "test_random"):
             randomize = (mode == "test_random")

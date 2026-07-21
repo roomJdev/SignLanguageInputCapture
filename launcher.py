@@ -4,18 +4,19 @@ import cv2
 import numpy as np
 
 _WIN = "Sign-to-Type"
-_W, _H = 820, 540
+_W, _H = 820, 600
 
 _MODES = [
     "Calibrate",
     "Live Mode",
     "Live + Injection",
     "Live + Guess Mode",
+    "Live + ED Mode",
     "Test (Ordered)",
     "Test (Random)",
     "Test Results",
 ]
-_KEYS = ["calibrate", "live", "live_inject", "live_guess", "test_ordered", "test_random", "sessions"]
+_KEYS = ["calibrate", "live", "live_inject", "live_guess", "live_ed", "test_ordered", "test_random", "sessions"]
 
 _ROW_TOP = 130
 _ROW_H   = 54
