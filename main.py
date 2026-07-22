@@ -430,10 +430,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                                         wi_buffer += ml
                                         wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer)
                                     elif ed_mode:
-                                        ed_buffer += ml
+                                        ed_buffer = word_suggester.clean_motion_artifacts(ed_buffer + ml)
                                         ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
                                     elif llm_mode:
-                                        llm_buffer += ml
+                                        llm_buffer = word_suggester.clean_motion_artifacts(llm_buffer + ml)
                                         llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer)
                                     else:
                                         injected = injector.inject_now(ml)
@@ -497,7 +497,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                         if (_ed_stable_count >= _ED_STABLE_FRAMES
                                 and _ed_last_added != current_letter):
                             _ed_last_added = current_letter
-                            ed_buffer += current_letter
+                            ed_buffer = word_suggester.clean_motion_artifacts(ed_buffer + current_letter)
                             ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
                     else:
                         _ed_stable_letter = ""
@@ -513,7 +513,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                         if (_llm_stable_count >= _LLM_STABLE_FRAMES
                                 and _llm_last_added != current_letter):
                             _llm_last_added = current_letter
-                            llm_buffer += current_letter
+                            llm_buffer = word_suggester.clean_motion_artifacts(llm_buffer + current_letter)
                             llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer)
                     else:
                         _llm_stable_letter = ""

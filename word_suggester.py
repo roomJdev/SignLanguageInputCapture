@@ -146,6 +146,18 @@ def suggest_ed(prefix: str, n: int = 3) -> tuple[list[str], str]:
     return [], ""
 
 
+def clean_motion_artifacts(buf: str) -> str:
+    """ZZ...D → D, JJ...I 패턴의 모션 오인식 잔재를 제거.
+
+    D 손모양이 Z 트리거여서, D를 입력하려다 Z가 먼저 들어가는 경우 보정.
+    패턴: 하나 이상의 Z 뒤에 D가 오면 앞의 Z를 모두 제거 (J/I도 동일).
+    """
+    import re
+    buf = re.sub(r'Z+D', 'D', buf, flags=re.IGNORECASE)
+    buf = re.sub(r'J+I', 'I', buf, flags=re.IGNORECASE)
+    return buf
+
+
 def suggest_llm(context: str, prefix: str, n: int = 3) -> tuple[list[str], str]:
     """LLM 컨텍스트 기반 단어 추천 (Ollama 로컬 LLM).
 
