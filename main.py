@@ -185,7 +185,7 @@ def _filter_by_symbol_mode(cal_data: dict | None, symbol_mode: str) -> dict | No
 
 def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | None,
         camera_index: int, inject: bool = False, start_guess: bool = False,
-        start_ed: bool = False) -> None:
+        start_ed: bool = False, start_llm: bool = False) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print(f"카메라 [{camera_index}]를 열 수 없습니다. --list 로 가용 카메라를 확인하세요.")
@@ -274,6 +274,17 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     _ed_stable_count = 0
     _ed_last_added = ""
     _ED_STABLE_FRAMES = 10
+
+    # ── LLM 모드 상태 ────────────────────────────────────────────────
+    llm_mode = start_llm   # L키로 토글
+    llm_context = ""       # 확정된 단어들 ("I was waiting for a ")
+    llm_buffer = ""        # 현재 입력 중인 prefix
+    llm_candidates: list[str] = []
+    llm_source = ""        # "llm" or "ed~..." (fallback 표시용)
+    _llm_stable_letter = ""
+    _llm_stable_count = 0
+    _llm_last_added = ""
+    _LLM_STABLE_FRAMES = 10
 
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
@@ -421,6 +432,9 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                                     elif ed_mode:
                                         ed_buffer += ml
                                         ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
+                                    elif llm_mode:
+                                        llm_buffer += ml
+                                        llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer)
                                     else:
                                         injected = injector.inject_now(ml)
                                         if injected:
@@ -487,6 +501,22 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                             ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
                     else:
                         _ed_stable_letter = ""
+                elif llm_mode:
+                    # LLM 모드: Ollama 컨텍스트 기반 단어 추천
+                    if current_letter not in ("?", ""):
+                        if current_letter == _llm_stable_letter:
+                            _llm_stable_count += 1
+                        else:
+                            _llm_stable_letter = current_letter
+                            _llm_stable_count = 1
+                            _llm_last_added = ""
+                        if (_llm_stable_count >= _LLM_STABLE_FRAMES
+                                and _llm_last_added != current_letter):
+                            _llm_last_added = current_letter
+                            llm_buffer += current_letter
+                            llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer)
+                    else:
+                        _llm_stable_letter = ""
                         _ed_stable_count = 0
                 else:
                     injected = injector.update(current_letter)
@@ -703,6 +733,77 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             cv2.putText(annotated, hint, (w // 2 - ht // 2, sb_y + SB_H + 22),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, ED_DIM, 1)
 
+        # LLM 모드 패널 — 보라색 계열
+        if llm_mode:
+            LLM_BRIGHT = (220, 130, 255)   # 보라 (BGR)
+            LLM_MID    = (175, 100, 200)
+            LLM_DIM    = (120, 70,  140)
+
+            BTN_W, BTN_H = 220, 68
+            BTN_GAP = 16
+            total_w = 3 * BTN_W + 2 * BTN_GAP
+            bx_start = w // 2 - total_w // 2
+            by = int(h * 0.60)
+
+            # 컨텍스트 표시 (상단)
+            ctx_short = llm_context[-50:] if len(llm_context) > 50 else llm_context
+            ctx_label = f"ctx: \"{ctx_short}\"" if llm_context else "ctx: (empty — ED fallback)"
+            ctx_tw = cv2.getTextSize(ctx_label, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)[0][0]
+            cv2.putText(annotated, ctx_label, (w // 2 - ctx_tw // 2, by - 48),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, LLM_DIM, 1)
+
+            # 버퍼 표시
+            llm_cursor = "_" if int(now * 2) % 2 == 0 else " "
+            is_fallback = llm_source.startswith("ed~")
+            if not llm_buffer:
+                llm_buf_label = "[ LLM MODE ]"
+                llm_buf_col = LLM_BRIGHT
+            elif is_fallback:
+                llm_buf_label = f"[ {llm_buffer}{llm_cursor} ] (ed fallback)"
+                llm_buf_col = (80, 210, 255)
+            else:
+                llm_buf_label = f"[ {llm_buffer}{llm_cursor} ]"
+                llm_buf_col = LLM_BRIGHT
+            buf_tw = cv2.getTextSize(llm_buf_label, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0][0]
+            cv2.putText(annotated, llm_buf_label, (w // 2 - buf_tw // 2, by - 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, llm_buf_col, 2)
+
+            for ci in range(3):
+                bx = bx_start + ci * (BTN_W + BTN_GAP)
+                has_cand = ci < len(llm_candidates)
+                label = llm_candidates[ci] if has_cand else "--"
+                num_label = f"{ci + 1}"
+                bg_col     = (30, 10, 40) if has_cand else (15, 15, 15)
+                border_col = LLM_MID if has_cand else (40, 40, 40)
+                txt_col    = LLM_BRIGHT if has_cand else (50, 50, 50)
+                num_col    = LLM_DIM if has_cand else (40, 40, 40)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), bg_col, -1)
+                cv2.rectangle(annotated, (bx, by), (bx + BTN_W, by + BTN_H), border_col, 2)
+                cv2.putText(annotated, num_label, (bx + 10, by + 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, num_col, 1)
+                tw = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.85, 2)[0][0]
+                cv2.putText(annotated, label, (bx + BTN_W // 2 - tw // 2, by + BTN_H - 18),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.85, txt_col, 2)
+                if has_cand:
+                    _btn_rects.append(("llm_candidate", ci, (bx, by, bx + BTN_W, by + BTN_H)))
+
+            # BKSP 버튼
+            sb_y = by + BTN_H + 18
+            SB_W, SB_H = 160, 52
+            bs_x = w // 2 - SB_W // 2
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), (30, 10, 40), -1)
+            cv2.rectangle(annotated, (bs_x, sb_y), (bs_x + SB_W, sb_y + SB_H), LLM_MID, 2)
+            tw = cv2.getTextSize("BKSP", cv2.FONT_HERSHEY_SIMPLEX, 0.72, 2)[0][0]
+            cv2.putText(annotated, "BKSP", (bs_x + SB_W // 2 - tw // 2, sb_y + 34),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.72, LLM_BRIGHT, 2)
+            _btn_rects.append(("llm_backspace", None, (bs_x, sb_y, bs_x + SB_W, sb_y + SB_H)))
+
+            src_label = "LLM" if llm_source == "llm" else "ED fallback"
+            hint = f"sign prefix  ->  1/2/3 to select  [{src_label}  model: {word_suggester.get_llm_model()}  m: switch]"
+            ht = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
+            cv2.putText(annotated, hint, (w // 2 - ht // 2, sb_y + SB_H + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, LLM_DIM, 1)
+
         # 텍스트 버퍼 영역 — 모드 바 바로 위
         cv2.rectangle(annotated, (0, h - 128), (w, h - 96), (20, 20, 20), -1)
         # 너무 길면 뒤에서 잘라서 표시
@@ -714,14 +815,15 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
 
         # 좌하단 — 모드/보정 상태 + 단축키 안내 (별도 배경)
         mode_label = "NUMBER" if symbol_mode == "number" else "LETTER"
-        extra_label = ("  GUESS:ON" if guess_mode else "  WORD-INJECT:ON" if wi_mode else "  ED:ON" if ed_mode else "")
+        extra_label = ("  GUESS:ON" if guess_mode else "  WORD-INJECT:ON" if wi_mode else "  ED:ON" if ed_mode else "  LLM:ON" if llm_mode else "")
         cv2.rectangle(annotated, (0, h - 96), (w, h), (0, 0, 0), -1)
         cv2.putText(annotated, f"Mode: {mode_label}  /  {cal_mode}{extra_label}", (10, h - 68),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_MID, 2)
         inject_label = "INJECT:ON" if injector.enabled else "INJECT:OFF"
         wi_label     = "WI:ON"     if wi_mode         else "WI:OFF"
         ed_label     = "ED:ON"     if ed_mode         else "ED:OFF"
-        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess  w: {wi_label}  x: {ed_label}", (10, h - 40),
+        llm_label    = "LLM:ON"   if llm_mode        else "LLM:OFF"
+        cv2.putText(annotated, f"e: mode  r: recalib  i: {inject_label}  g: guess  w: {wi_label}  x: {ed_label}  l: {llm_label}", (10, h - 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.60, GREEN_DIM, 2)
         cv2.putText(annotated, "t/y: test (random)  u: sessions  p: profile  q: quit", (10, h - 14),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, GREEN_DIM, 2)
@@ -783,6 +885,25 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _ed_stable_letter = ""
                 _ed_stable_count = 0
                 _ed_last_added = ""
+            elif action == "llm_candidate" and llm_mode:
+                if arg < len(llm_candidates):
+                    word = llm_candidates[arg]
+                    injector.inject_string(word + " ")
+                    text_buffer += word + " "
+                    llm_context += word + " "
+                    llm_buffer = ""
+                    llm_candidates = []
+                    llm_source = ""
+                    _llm_stable_letter = ""
+                    _llm_stable_count = 0
+                    _llm_last_added = ""
+                    print(f"[llm] 클릭 선택: {word}")
+            elif action == "llm_backspace" and llm_mode:
+                llm_buffer = llm_buffer[:-1]
+                llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer) if llm_buffer else ([], "")
+                _llm_stable_letter = ""
+                _llm_stable_count = 0
+                _llm_last_added = ""
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -794,8 +915,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if wi_mode:
                 guess_mode = False
                 ed_mode = False
+                llm_mode = False
                 guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
                 ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
+                llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
             else:
                 wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
             print(f"[wi] Word Injection 모드 {'ON' if wi_mode else 'OFF'}")
@@ -806,11 +929,50 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if ed_mode:
                 guess_mode = False
                 wi_mode = False
+                llm_mode = False
                 guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
                 wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+                llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
             else:
                 ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
             print(f"[ed] ED 모드 {'ON' if ed_mode else 'OFF'}")
+
+        # LLM 모드 토글 (L키)
+        if key == ord("l"):
+            llm_mode = not llm_mode
+            if llm_mode:
+                guess_mode = False
+                wi_mode = False
+                ed_mode = False
+                guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
+                wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
+                ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
+            else:
+                llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
+            print(f"[llm] LLM 모드 {'ON' if llm_mode else 'OFF'}")
+
+        # LLM 모드 — 키보드 1/2/3 후보 선택
+        if llm_mode and key in (ord("1"), ord("2"), ord("3")):
+            idx = key - ord("1")
+            if idx < len(llm_candidates):
+                word = llm_candidates[idx]
+                injector.inject_string(word + " ")
+                text_buffer += word + " "
+                llm_context += word + " "
+                llm_buffer = ""
+                llm_candidates = []
+                llm_source = ""
+                _llm_stable_letter = ""
+                _llm_stable_count = 0
+                _llm_last_added = ""
+                print(f"[llm] 선택: {word}")
+
+        # LLM 모드 — M키로 모델 순환
+        if llm_mode and key == ord("m"):
+            new_model = word_suggester.cycle_llm_model()
+            llm_candidates = []
+            llm_source = ""
+            print(f"[llm] 모델 전환: {new_model}")
 
         # ED 모드 — 키보드 1/2/3 후보 선택
         if ed_mode and key in (ord("1"), ord("2"), ord("3")):
@@ -897,8 +1059,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if guess_mode:
                 wi_mode = False
                 ed_mode = False
+                llm_mode = False
                 wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
                 ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
+                llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
             else:
                 guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
             print(f"[guess] 모드 {'ON' if guess_mode else 'OFF'}")
@@ -1063,6 +1227,9 @@ def main() -> None:
         elif mode == "live_ed":
             run(detector, active_cal, active_motion_cal, camera_index,
                 inject=True, start_ed=True)
+        elif mode == "live_llm":
+            run(detector, active_cal, active_motion_cal, camera_index,
+                inject=True, start_llm=True)
 
         elif mode in ("test_ordered", "test_random"):
             randomize = (mode == "test_random")
