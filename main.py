@@ -285,6 +285,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     _llm_stable_count = 0
     _llm_last_added = ""
     _LLM_STABLE_FRAMES = 10
+    _key_ignore_until = 0.0   # 단어 선택 직후 주입된 키가 CV2로 돌아와 단축키를 오트리거하는 것 방지
 
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
@@ -900,12 +901,15 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                     print(f"[llm] 클릭 선택: {word}")
             elif action == "llm_backspace" and llm_mode:
                 llm_buffer = llm_buffer[:-1]
-                llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer) if llm_buffer else ([], "")
+                # BKSP는 빠른 응답이 중요하므로 LLM 대신 ED로 즉시 갱신
+                llm_candidates, llm_source = word_suggester.suggest_ed(llm_buffer) if llm_buffer else ([], "")
                 _llm_stable_letter = ""
                 _llm_stable_count = 0
                 _llm_last_added = ""
 
         key = cv2.waitKey(1) & 0xFF
+        if now < _key_ignore_until:
+            key = 0xFF   # 쿨다운 중 — 주입된 키가 단축키를 오트리거하는 것 방지
         if key == ord("q"):
             break
         if key == ord("i"):
@@ -965,6 +969,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _llm_stable_letter = ""
                 _llm_stable_count = 0
                 _llm_last_added = ""
+                _key_ignore_until = now + 0.4   # 주입된 글자가 CV2로 돌아오는 것 방지
                 print(f"[llm] 선택: {word}")
 
         # LLM 모드 — M키로 모델 순환
@@ -987,6 +992,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _ed_stable_letter = ""
                 _ed_stable_count = 0
                 _ed_last_added = ""
+                _key_ignore_until = now + 0.4
                 print(f"[ed] 선택: {word}")
 
         # Word Injection 모드 — 키보드 1/2/3 후보 선택 후 Cmd+Tab으로 이전 앱 복귀
@@ -1023,6 +1029,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _guess_stable_letter = ""
                 _guess_stable_count = 0
                 _guess_last_added = ""
+                _key_ignore_until = now + 0.4
                 print(f"[guess] 키 선택: {word}")
 
         # SPACE
