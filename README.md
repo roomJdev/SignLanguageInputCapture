@@ -16,7 +16,9 @@ MediaPipe Hand Landmarker 기반으로 손 관절 21개 좌표를 추출하고, 
 - **Word Injection 모드** (`W` 키): Guess 모드와 동일한 단어 추천 UI. 후보 선택(`1`/`2`/`3`)하면 Cmd+Tab으로 이전 앱에 단어를 주입하고 자동으로 OpenCV 창으로 복귀 — 포커스 전환 없이 연속 입력 가능
 - **단어 추천 — Classic fallback**: prefix 정확 매칭 실패 시 뒤에서 한 글자씩 제거해 최장 매칭 prefix 검색, 그래도 없으면 같은 첫 글자 단어에서 유사도 순 검색
 - **단어 추천 — Edit Distance 모드** (`Live + ED Mode`): rapidfuzz `fuzz.ratio` 기반 전체 문자열 edit distance 스캔 후 wordfreq 빈도순 재정렬 — 오타 위치에 무관하게 robust한 추천
-- **런처 화면**: 앱 시작 시 8가지 모드 선택 — 방향키/w·s 키 또는 마우스 클릭으로 선택
+- **단어 추천 — LLM 모드** (`Live + LLM Mode`): Ollama 로컬 LLM(gemma3:4b / phi4-mini)에 이전 확정 단어들을 컨텍스트로 전달해 다음 단어를 추천 — 문장 맥락 기반 예측. Ollama 미실행 시 자동으로 ED 모드로 fallback. `M` 키로 실행 중 모델 전환 가능
+- **D/I 입력 안정성 개선**: D 손모양이 Z 트리거, I 손모양이 J 트리거인 구조에서 발생하던 `ZZD`, `JJI` 오인식 패턴을 자동 보정 (`clean_motion_artifacts`)
+- **런처 화면**: 앱 시작 시 9가지 모드 선택 — 방향키/w·s 키 또는 마우스 클릭으로 선택
 - **다중 모델 비교 테스트**: 보정 데이터 한 번으로 k-NN·SVM·RF·LR·MLP 5개 모델을 동시에 학습해 모델별 예측 결과를 나란히 표시
 - **테스트 모드**: A-Z, 0-9를 순서대로(또는 랜덤으로) 제시 → 보정 프로필 선택 → 인식 결과 기록. 세션별/모델별 인식률 통계 제공
 - **보정 프로필 관리**: 보정 완료 후 이름을 붙여 저장. 테스트 또는 라이브 모드 시작 전 누구의 보정 데이터를 쓸지 선택 가능
@@ -70,6 +72,7 @@ python main.py --reset-test-results
 | **Live + Injection** | 인식된 글자를 외부 앱에 즉시 주입 |
 | **Live + Guess Mode** | Injection ON + Guess 모드 ON으로 시작 |
 | **Live + ED Mode** | Injection ON + Edit Distance 단어 추천 모드로 시작 |
+| **Live + LLM Mode** | Injection ON + Ollama 로컬 LLM 컨텍스트 추천 모드로 시작 |
 | **Test (Ordered)** | 알파벳/숫자 순서대로 인식률 테스트 |
 | **Test (Random)** | 랜덤 순서 인식률 테스트 |
 | **Test Results** | 저장된 테스트 세션 조회/삭제 |
@@ -88,6 +91,8 @@ python main.py --reset-test-results
 | `G` | Guess 모드 ON/OFF 토글 | ✓ | ✓ |
 | `W` | Word Injection 모드 ON/OFF 토글 | ✓ | ✓ |
 | `X` | Edit Distance 모드 ON/OFF 토글 | ✓ | ✓ |
+| `L` | LLM 모드 ON/OFF 토글 | ✓ | ✓ |
+| `M` | (LLM 모드) 모델 순환 전환 (gemma3:4b ↔ phi4-mini) | — | ✓ |
 | `SPACE` | (Guess 모드) 현재 버퍼 확정 / 스페이스 입력 | — | ✓ |
 | `Backspace` | (Guess/WI 모드) 버퍼 마지막 글자 삭제 | — | ✓ |
 | `Q` | 종료 | ✓ | ✓ |
@@ -114,7 +119,26 @@ Classic Guess 모드보다 오타에 강한 단어 추천 모드입니다. 수�
 4. 키보드 `1`/`2`/`3`으로 단어 선택 → 외부 앱에 단어 + 공백 주입
 5. **BKSP** 버튼: 마지막 수화 글자 취소
 
-> `G`, `W` 키와 상호 배타적으로 동작합니다 — ED 모드 ON 시 Guess/WI 모드는 자동 OFF.
+> `G`, `W`, `L` 키와 상호 배타적으로 동작합니다 — 하나를 ON하면 나머지는 자동 OFF.
+
+---
+
+## LLM 모드 사용법
+
+이전에 입력한 단어들을 문맥으로 활용해 다음 단어를 추천하는 모드입니다. Ollama 로컬 LLM이 필요합니다.
+
+**사전 조건**: [Ollama](https://ollama.com) 설치 후 `ollama serve` 실행, `gemma3:4b` 또는 `phi4-mini` 모델 보유
+
+1. 런처에서 **Live + LLM Mode** 선택, 또는 라이브 화면에서 `L` 키 토글
+2. 하단 상태바에 `LLM:ON` + 현재 모델명 확인
+3. 수화로 단어의 앞 글자(들)를 입력 → 화면 중앙에 보라색 후보 3개 표시
+4. 키보드 `1`/`2`/`3`으로 단어 선택 → 외부 앱에 주입 + 컨텍스트에 누적
+5. `M` 키: gemma3:4b ↔ phi4-mini 실시간 모델 전환
+6. **BKSP** 버튼: 마지막 수화 글자 취소
+
+**fallback**: Ollama 서버가 꺼져있거나 응답이 3초 초과되면 자동으로 ED 모드로 전환되며 버퍼 표시가 청록색으로 바뀝니다.
+
+> G, W, X 키와 상호 배타적으로 동작합니다.
 
 ---
 
@@ -181,7 +205,33 @@ Live + ED 모드에서 사용합니다. rapidfuzz 라이브러리 기반입니�
 **현재 한계**:
 - 첫 글자 오인식(`kproj` → project)은 ED 스코어가 낮아 미탐지
 - wordfreq에 등재된 오타 단어(`leter`, `recieve`)가 있으면 오타 자체가 상위 노출될 수 있음
-- 향후 컨텍스트(이전 입력 단어들) 기반 LLM 추천으로 보완 예정
+
+---
+
+### LLM 전략 (`suggest_llm`)
+
+Live + LLM 모드에서 사용합니다. Ollama 로컬 LLM 기반입니다.
+
+```
+입력: context (이전 확정 단어들), prefix (현재 입력 중인 prefix)
+
+  0. context가 비어있으면 → suggest_ed()로 즉시 fallback
+
+  1. Ollama REST API 호출 (localhost:11434/api/generate)
+     → 프롬프트: "문장: {context} / {prefix}로 시작하는 단어 3개를 콤마로만 답하세요"
+     → temperature=0.3, num_predict=30, timeout=3초
+     → 모델: gemma3:4b 또는 phi4-mini (M 키로 실행 중 전환 가능)
+
+  2. 응답 파싱
+     → 콤마 구분 단어 추출 → prefix로 시작하는 것만 필터
+     → 조건 충족 단어 없으면 → suggest_ed()로 fallback
+
+  3. Ollama 서버 오류 / 타임아웃 → suggest_ed()로 자동 fallback
+```
+
+**컨텍스트 관리**: 단어를 선택할 때마다 `llm_context`에 누적되어 다음 요청에 반영됩니다.
+
+**fallback 표시**: 버퍼 표시가 청록색(`(ed fallback)`)으로 바뀌면 Ollama 없이 ED 모드로 동작 중임을 뜻합니다.
 
 ---
 
@@ -210,8 +260,8 @@ Guess 모드와 달리 타겟 앱의 포커스를 유지한 채 연속으로 단
 ```
 SignLanguageInputCapture/
 ├── main.py                    # 진입점 — 런처, 인식 루프, 모드 전환, 키/마우스 처리
-├── launcher.py                # 앱 시작 화면 — 7가지 모드 선택 UI
-├── word_suggester.py          # wordfreq 기반 단어 추천 (prefix + fuzzy fallback)
+├── launcher.py                # 앱 시작 화면 — 9가지 모드 선택 UI
+├── word_suggester.py          # 단어 추천 — Classic / Edit Distance / LLM (Ollama) 전략
 ├── hand_detector.py           # MediaPipe Hand Landmarker 래퍼
 ├── features.py                # 21×3 랜드마크 → 25차원 feature vector + 모션 프레임 추출
 ├── sign_classifier.py         # 정적 심볼 분류 (규칙 기반 / k-NN, 거리 임계값 1.5)
