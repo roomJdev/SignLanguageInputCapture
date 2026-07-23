@@ -920,7 +920,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             key = 0xFF   # 쿨다운 중 — 주입된 키가 단축키를 오트리거하는 것 방지
         # LLM 모드 중에는 q/ESC/1/2/3/BKSP만 허용 — 주입된 글자가 단축키 트리거 방지
         if llm_mode and key not in (
-            ord("q"), 27, ord("1"), ord("2"), ord("3"), 127
+            27, ord("1"), ord("2"), ord("3"), 127
         ):
             key = 0xFF
         if key == ord("q"):
