@@ -427,15 +427,23 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                                     if guess_mode:
                                         guess_buffer += ml
                                         guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer)
+                                        _guess_last_added = ml
+                                        _guess_stable_letter = ml
                                     elif wi_mode:
                                         wi_buffer += ml
                                         wi_candidates, wi_matched_prefix = word_suggester.suggest(wi_buffer)
+                                        _wi_last_added = ml
+                                        _wi_stable_letter = ml
                                     elif ed_mode:
                                         ed_buffer = word_suggester.clean_motion_artifacts(ed_buffer + ml)
                                         ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer)
+                                        _ed_last_added = ml
+                                        _ed_stable_letter = ml
                                     elif llm_mode:
                                         llm_buffer = word_suggester.clean_motion_artifacts(llm_buffer + ml)
                                         llm_candidates, llm_source = word_suggester.suggest_llm(llm_context, llm_buffer)
+                                        _llm_last_added = ml
+                                        _llm_stable_letter = ml
                                     else:
                                         injected = injector.inject_now(ml)
                                         if injected:
