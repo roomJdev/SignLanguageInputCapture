@@ -922,7 +922,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             break
         if key == ord("i"):
             injector.toggle()
-        if key == ord("w"):
+        if not llm_mode and key == ord("w"):
             wi_mode = not wi_mode
             if wi_mode:
                 guess_mode = False
@@ -936,7 +936,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             print(f"[wi] Word Injection 모드 {'ON' if wi_mode else 'OFF'}")
 
         # ED 모드 토글 (X키)
-        if key == ord("x"):
+        if not llm_mode and key == ord("x"):
             ed_mode = not ed_mode
             if ed_mode:
                 guess_mode = False
@@ -949,19 +949,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
             print(f"[ed] ED 모드 {'ON' if ed_mode else 'OFF'}")
 
-        # LLM 모드 토글 (L키)
-        if key == ord("l"):
-            llm_mode = not llm_mode
-            if llm_mode:
-                guess_mode = False
-                wi_mode = False
-                ed_mode = False
-                guess_buffer = ""; guess_candidates = []; _guess_stable_letter = ""; _guess_stable_count = 0; _guess_last_added = ""
-                wi_buffer = ""; wi_candidates = []; _wi_stable_letter = ""; _wi_stable_count = 0; _wi_last_added = ""
-                ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
-            else:
-                llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
-            print(f"[llm] LLM 모드 {'ON' if llm_mode else 'OFF'}")
+        # LLM 모드 토글 (L키) — 현재 비활성화, 런처에서만 진입 가능
+        # if key == ord("l"):
+        #     llm_mode = not llm_mode
+        #     ...
 
         # LLM 모드 — 키보드 1/2/3 후보 선택
         if llm_mode and key in (ord("1"), ord("2"), ord("3")):
@@ -980,12 +971,12 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _key_ignore_until = now + 0.4   # 주입된 글자가 CV2로 돌아오는 것 방지
                 print(f"[llm] 선택: {word}")
 
-        # LLM 모드 — M키로 모델 순환
-        if llm_mode and key == ord("m"):
-            new_model = word_suggester.cycle_llm_model()
-            llm_candidates = []
-            llm_source = ""
-            print(f"[llm] 모델 전환: {new_model}")
+        # LLM 모드 — M키로 모델 순환 (현재 비활성화)
+        # if llm_mode and key == ord("m"):
+        #     new_model = word_suggester.cycle_llm_model()
+        #     llm_candidates = []
+        #     llm_source = ""
+        #     print(f"[llm] 모델 전환: {new_model}")
 
         # ED 모드 — 키보드 1/2/3 후보 선택
         if ed_mode and key in (ord("1"), ord("2"), ord("3")):
@@ -1069,7 +1060,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         # injection ON 중에는 주입된 키가 cv2로 돌아와 단축키를 오트리거할 수 있으므로 억제
         if injector.enabled:
             continue
-        if key == ord("g"):
+        if not llm_mode and key == ord("g"):
             guess_mode = not guess_mode
             if guess_mode:
                 wi_mode = False
