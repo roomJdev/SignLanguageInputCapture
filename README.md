@@ -16,8 +16,8 @@ MediaPipe Hand Landmarker 기반으로 손 관절 21개 좌표를 추출하고, 
 - **Word Injection 모드** (`W` 키): Guess 모드와 동일한 단어 추천 UI. 후보 선택(`1`/`2`/`3`)하면 Cmd+Tab으로 이전 앱에 단어를 주입하고 자동으로 OpenCV 창으로 복귀 — 포커스 전환 없이 연속 입력 가능
 - **단어 추천 — Classic fallback**: prefix 정확 매칭 실패 시 뒤에서 한 글자씩 제거해 최장 매칭 prefix 검색, 그래도 없으면 같은 첫 글자 단어에서 유사도 순 검색
 - **단어 추천 — Edit Distance 모드** (`Live + ED Mode`): rapidfuzz `fuzz.ratio` 기반 전체 문자열 edit distance 스캔 후 wordfreq 빈도순 재정렬 — 오타 위치에 무관하게 robust한 추천
-- **단어 추천 — LLM 모드** (`Live + LLM Mode`): Ollama 로컬 LLM(gemma3:4b / phi4-mini)에 이전 확정 단어들을 컨텍스트로 전달해 다음 단어를 추천 — 문장 맥락 기반 예측. Ollama 미실행 시 자동으로 ED 모드로 fallback. `M` 키로 실행 중 모델 전환 가능
-- **D/I 입력 안정성 개선**: D 손모양이 Z 트리거, I 손모양이 J 트리거인 구조에서 발생하던 `ZZD`, `JJI` 오인식 패턴을 자동 보정 (`clean_motion_artifacts`)
+- **단어 추천 — LLM 모드** (`Live + LLM Mode`): Ollama 로컬 LLM(gemma3:4b / phi4-mini)에 이전 확정 단어들을 컨텍스트로 전달해 다음 단어를 추천 — 문장 맥락 기반 예측. 런처에서 선택 시 Ollama 자동 시작. 미실행/타임아웃 시 ED 모드로 자동 fallback
+- **D/I 입력 안정성 개선**: D 손모양이 Z 트리거, I 손모양이 J 트리거인 구조에서 발생하던 `ZZD`, `JJI` 오인식 패턴을 자동 보정 (`clean_motion_artifacts`). 모션 확정 후 stable state를 즉시 갱신해 쿨다운 이후 중복 입력 방지
 - **런처 화면**: 앱 시작 시 9가지 모드 선택 — 방향키/w·s 키 또는 마우스 클릭으로 선택
 - **다중 모델 비교 테스트**: 보정 데이터 한 번으로 k-NN·SVM·RF·LR·MLP 5개 모델을 동시에 학습해 모델별 예측 결과를 나란히 표시
 - **테스트 모드**: A-Z, 0-9를 순서대로(또는 랜덤으로) 제시 → 보정 프로필 선택 → 인식 결과 기록. 세션별/모델별 인식률 통계 제공
@@ -91,11 +91,12 @@ python main.py --reset-test-results
 | `G` | Guess 모드 ON/OFF 토글 | ✓ | ✓ |
 | `W` | Word Injection 모드 ON/OFF 토글 | ✓ | ✓ |
 | `X` | Edit Distance 모드 ON/OFF 토글 | ✓ | ✓ |
-| `L` | LLM 모드 ON/OFF 토글 | ✓ | ✓ |
-| `M` | (LLM 모드) 모델 순환 전환 (gemma3:4b ↔ phi4-mini) | — | ✓ |
 | `SPACE` | (Guess 모드) 현재 버퍼 확정 / 스페이스 입력 | — | ✓ |
-| `Backspace` | (Guess/WI 모드) 버퍼 마지막 글자 삭제 | — | ✓ |
-| `Q` | 종료 | ✓ | ✓ |
+| `Backspace` | (Guess/WI/ED 모드) 버퍼 마지막 글자 삭제 | — | ✓ |
+| `ESC` | 런처로 복귀 | ✓ | ✓ |
+| `Q` | 런처로 복귀 | ✓ | ✓ |
+
+> **LLM 모드 중 키 제한**: 주입된 단어 문자가 단축키를 오트리거하는 것을 막기 위해, LLM 모드 활성 중에는 `ESC`, `1`/`2`/`3`, `Backspace` 외 모든 키가 무시됩니다. LLM 모드는 런처에서만 진입 가능하며, 종료는 `ESC`로 런처로 복귀하는 방식을 사용합니다.
 
 > 주입 ON 상태에서는 주입된 키가 cv2 창으로 돌아와 단축키를 오트리거하는 것을 방지하기 위해 E·R·T·Y·U·P 단축키가 비활성화됩니다.
 
@@ -127,18 +128,18 @@ Classic Guess 모드보다 오타에 강한 단어 추천 모드입니다. 수�
 
 이전에 입력한 단어들을 문맥으로 활용해 다음 단어를 추천하는 모드입니다. Ollama 로컬 LLM이 필요합니다.
 
-**사전 조건**: [Ollama](https://ollama.com) 설치 후 `ollama serve` 실행, `gemma3:4b` 또는 `phi4-mini` 모델 보유
+**사전 조건**: [Ollama](https://ollama.com) 설치, `gemma3:4b` 또는 `phi4-mini` 모델 보유 (`ollama pull gemma3:4b`)
 
-1. 런처에서 **Live + LLM Mode** 선택, 또는 라이브 화면에서 `L` 키 토글
-2. 하단 상태바에 `LLM:ON` + 현재 모델명 확인
+1. 런처에서 **Live + LLM Mode** 선택 → Ollama 서버 자동 시작 (미실행 시)
+2. 하단 상태바에 `LLM:ON` 확인
 3. 수화로 단어의 앞 글자(들)를 입력 → 화면 중앙에 보라색 후보 3개 표시
 4. 키보드 `1`/`2`/`3`으로 단어 선택 → 외부 앱에 주입 + 컨텍스트에 누적
-5. `M` 키: gemma3:4b ↔ phi4-mini 실시간 모델 전환
-6. **BKSP** 버튼: 마지막 수화 글자 취소
+5. **BKSP** 버튼: 마지막 수화 글자 취소
+6. **ESC**: 런처로 복귀
 
-**fallback**: Ollama 서버가 꺼져있거나 응답이 3초 초과되면 자동으로 ED 모드로 전환되며 버퍼 표시가 청록색으로 바뀝니다.
+**fallback**: Ollama 서버 응답이 3초 초과되거나 컨텍스트가 비어있으면 자동으로 ED 모드로 전환되며 버퍼 표시가 청록색으로 바뀝니다.
 
-> G, W, X 키와 상호 배타적으로 동작합니다.
+> LLM 모드 중에는 G, W, X 등 다른 모드 전환 키가 비활성화됩니다. 모드 변경은 ESC로 런처에 돌아가 재선택하세요.
 
 ---
 
@@ -220,7 +221,7 @@ Live + LLM 모드에서 사용합니다. Ollama 로컬 LLM 기반입니다.
   1. Ollama REST API 호출 (localhost:11434/api/generate)
      → 프롬프트: "문장: {context} / {prefix}로 시작하는 단어 3개를 콤마로만 답하세요"
      → temperature=0.3, num_predict=30, timeout=3초
-     → 모델: gemma3:4b 또는 phi4-mini (M 키로 실행 중 전환 가능)
+     → 모델: gemma3:4b 또는 phi4-mini (런처 진입 전 word_suggester.py에서 설정)
 
   2. 응답 파싱
      → 콤마 구분 단어 추출 → prefix로 시작하는 것만 필터
