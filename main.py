@@ -183,9 +183,33 @@ def _filter_by_symbol_mode(cal_data: dict | None, symbol_mode: str) -> dict | No
     return {k: v for k, v in cal_data.items() if not k.isdigit()}
 
 
+def _ensure_ollama() -> None:
+    """Ollama 서버가 응답하지 않으면 백그라운드로 실행."""
+    import urllib.request, urllib.error, subprocess, time
+    try:
+        urllib.request.urlopen("http://localhost:11434", timeout=1)
+        return  # 이미 실행 중
+    except Exception:
+        pass
+    print("[llm] Ollama 서버 시작 중...")
+    subprocess.Popen(["ollama", "serve"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(10):  # 최대 5초 대기
+        time.sleep(0.5)
+        try:
+            urllib.request.urlopen("http://localhost:11434", timeout=1)
+            print("[llm] Ollama 준비 완료")
+            return
+        except Exception:
+            pass
+    print("[llm] Ollama 시작 실패 — ED fallback으로 동작합니다")
+
+
 def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | None,
         camera_index: int, inject: bool = False, start_guess: bool = False,
         start_ed: bool = False, start_llm: bool = False) -> None:
+    if start_llm:
+        _ensure_ollama()
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print(f"카메라 [{camera_index}]를 열 수 없습니다. --list 로 가용 카메라를 확인하세요.")
