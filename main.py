@@ -920,6 +920,8 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             key = 0xFF   # 쿨다운 중 — 주입된 키가 단축키를 오트리거하는 것 방지
         if key == ord("q"):
             break
+        if key == 27:  # ESC → 런처로 복귀
+            break
         if key == ord("i"):
             injector.toggle()
         if not llm_mode and key == ord("w"):
