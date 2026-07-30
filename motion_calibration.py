@@ -85,6 +85,7 @@ def load_motion_calibration() -> dict | None:
 
 
 def save_motion_calibration(data: dict) -> None:
+    os.makedirs(os.path.dirname(MOTION_CALIBRATION_PATH), exist_ok=True)
     np.save(MOTION_CALIBRATION_PATH, data)
     print(f"모션 보정 데이터 저장 완료: {MOTION_CALIBRATION_PATH}")
 

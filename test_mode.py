@@ -162,6 +162,7 @@ def _load_results() -> list[dict]:
 
 def _save_session(sessions: list[dict], session: dict) -> None:
     sessions.append(session)
+    os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
     with open(RESULTS_PATH, "w", encoding="utf-8") as f:
         json.dump(sessions, f, ensure_ascii=False, indent=2)
 

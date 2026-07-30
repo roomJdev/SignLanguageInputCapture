@@ -149,6 +149,7 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
 
 
 def save_calibration(data: dict) -> None:
+    os.makedirs(os.path.dirname(CALIBRATION_PATH), exist_ok=True)
     np.save(CALIBRATION_PATH, data)
     print(f"보정 데이터 저장 완료: {CALIBRATION_PATH}")
 

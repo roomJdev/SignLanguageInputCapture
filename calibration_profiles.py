@@ -29,6 +29,7 @@ def _load_index() -> list[dict]:
 
 
 def _save_index(profiles: list[dict]) -> None:
+    os.makedirs(os.path.dirname(PROFILES_PATH), exist_ok=True)
     with open(PROFILES_PATH, "w", encoding="utf-8") as f:
         json.dump(profiles, f, indent=2, ensure_ascii=False)
 
