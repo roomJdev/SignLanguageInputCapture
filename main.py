@@ -210,7 +210,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         camera_index: int, inject: bool = False, start_guess: bool = False,
         start_ed: bool = False, start_llm: bool = False,
         study_schedule: list[dict] | None = None, study_participant: str = "",
-        study_cal_profile: str = "Default") -> None:
+        study_cal_profile: str = "Default", study_block_order: str = "ed_first") -> None:
     if start_llm or (study_schedule and any(t["mode"] == "llm" for t in study_schedule)):
         _ensure_ollama()
     cap = cv2.VideoCapture(camera_index)
@@ -322,11 +322,12 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     study_buffer_start_len = 0
     study_backspace_count = 0
     study_session: dict | None = None
+    study_block_just_finished = False   # 직전 트라이얼이 모드 블록의 마지막이었는지 (TLX 안내용)
     if study_active:
         _first = study_schedule[0]
         ed_mode = (_first["mode"] == "ed")
         llm_mode = (_first["mode"] == "llm")
-        study_session = study_mode.start_session(study_participant, study_cal_profile)
+        study_session = study_mode.start_session(study_participant, study_cal_profile, study_block_order)
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
     word_suggester.preload()
@@ -602,9 +603,16 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if study_waiting_next:
                 nxt = study_schedule[study_idx]
                 mode_txt = "ED" if nxt["mode"] == "ed" else "LLM"
-                line1 = f"STUDY  Trial {study_idx + 1}/{n_trials}  |  Mode: {mode_txt}  |  READY -- press SPACE to start"
+                if study_block_just_finished:
+                    prev_mode_txt = "ED" if mode_txt == "LLM" else "LLM"
+                    line1 = (f"STUDY  {prev_mode_txt} BLOCK COMPLETE -- fill out NASA-TLX now, "
+                             f"then press SPACE for {mode_txt} block")
+                    color1 = (60, 160, 255)
+                else:
+                    line1 = f"STUDY  Trial {study_idx + 1}/{n_trials}  |  Mode: {mode_txt}  |  READY -- press SPACE to start"
+                    color1 = (80, 220, 255)
                 cv2.putText(annotated, line1, (120, 34),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, (80, 220, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.58, color1, 2)
             else:
                 cur = study_schedule[study_idx]
                 mode_txt = "ED" if cur["mode"] == "ed" else "LLM"
@@ -1122,6 +1130,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         if key == ord(" "):
             if study_active and study_waiting_next:
                 study_waiting_next = False
+                study_block_just_finished = False
                 study_trial_start = now
                 study_buffer_start_len = len(text_buffer)
                 print(f"[study] Trial {study_idx + 1}/{len(study_schedule)} 시작 "
@@ -1164,10 +1173,13 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             llm_context = ""
 
             if study_idx >= len(study_schedule):
-                print("[study] 모든 트라이얼 완료 -- 런처로 복귀")
+                print(f"[study] 모든 트라이얼 완료 -- {cur['mode'].upper()} 블록 NASA-TLX 작성 후 런처로 복귀")
                 break
 
             nxt = study_schedule[study_idx]
+            study_block_just_finished = (nxt["mode"] != cur["mode"])
+            if study_block_just_finished:
+                print(f"[study] {cur['mode'].upper()} 블록 완료 -- NASA-TLX 작성 후 SPACE로 {nxt['mode'].upper()} 블록 시작")
             ed_mode = (nxt["mode"] == "ed")
             llm_mode = (nxt["mode"] == "llm")
             study_waiting_next = True
@@ -1381,9 +1393,12 @@ def main() -> None:
 
         elif mode == "study":
             participant = args.participant or run_text_input("Enter participant name / number:")
+            schedule, block_order = study_mode.next_schedule()
+            print(f"[study] 이번 참가자 블록 순서: {block_order}")
             run(detector, active_cal, active_motion_cal, camera_index,
-                inject=True, study_schedule=study_mode.STUDY_SCHEDULE,
-                study_participant=participant, study_cal_profile=profile_name)
+                inject=True, study_schedule=schedule,
+                study_participant=participant, study_cal_profile=profile_name,
+                study_block_order=block_order)
 
         elif mode in ("test_ordered", "test_random"):
             randomize = (mode == "test_random")

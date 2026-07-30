@@ -1,18 +1,22 @@
 """ED vs LLM 모드 비교 실험(반자동) — 목표 문장 제시, 자동 순서 전환, 결과 자동 기록.
 
-문장 4개 x 모드 2개(ED/LLM) = 8 trial, ABBA 카운터밸런싱(PHRASE_SAMPLING.md 참고).
-같은 문장을 ED/LLM 두 모드로 연속 입력하되, 어느 모드가 먼저 오는지는 문장마다 교대한다.
+문장 2개를 각각 ED/LLM 모드로 입력 (2 phrases x 2 modes = 4 trial).
+NASA-TLX를 "모드당 1회"로 진행하기 위해 트라이얼을 모드 블록으로 묶는다
+(같은 모드의 두 문장을 연달아 진행 → 블록 종료 시 TLX 응답 → 다음 모드 블록).
+어느 모드 블록이 먼저 오는지는 참가자마다 교대(between-participant counterbalancing)
+시켜 순서 효과를 상쇄한다 — 참가자 수가 여럿(N>1)이라 이 방식이 ABBA보다 자연스럽다.
 
 흐름 (main.py의 run() 루프 내부에서 처리):
-    1) "Trial i/8 — 준비되면 SPACE" 대기 화면
+    1) "Trial i/4 — 준비되면 SPACE" 대기 화면
     2) SPACE → 타이머 시작, 참가자가 손동작으로 목표 문장 입력 (ED 또는 LLM 모드)
     3) ENTER → 트라이얼 종료, 소요 시간·오타(backspace)·유사도 자동 기록 후 다음 트라이얼로 자동 전환
-    4) 8개 모두 끝나면 자동으로 런처 복귀
+    4) 모드 블록이 끝나면(다음 트라이얼의 모드가 바뀌면) "NASA-TLX 응답 후 SPACE" 안내로 전환
+    5) 4개 모두 끝나면 자동으로 런처 복귀
 
-NASA-TLX 설문은 코드로 자동화하지 않음 — 트라이얼 사이 대기 화면에서 종이/구글폼으로 응답 후 SPACE.
+NASA-TLX 설문은 코드로 자동화하지 않음 — 블록 종료 대기 화면에서 종이/구글폼으로 응답 후 SPACE.
 
 결과 저장 형식은 test_mode.py의 test_results.json과 동일하게 "세션 단위"로 묶는다.
-세션 하나 = 참가자 1명이 8개 트라이얼을 도는 것. 트라이얼이 끝날 때마다 세션 안에
+세션 하나 = 참가자 1명이 4개 트라이얼을 도는 것. 트라이얼이 끝날 때마다 세션 안에
 누적하고 즉시 파일에 다시 씀 (중간에 꺼져도 그때까지의 트라이얼은 보존됨).
 """
 
@@ -40,15 +44,32 @@ STUDY_PHRASES = [
     "the food at this restaurant",
 ]
 
-# ABBA 카운터밸런싱: 문장마다 ED/LLM 순서를 교대 (모드-순서 confound 제거)
-STUDY_SCHEDULE = [
-    {"phrase": STUDY_PHRASES[0], "mode": "ed"},
-    {"phrase": STUDY_PHRASES[0], "mode": "llm"},
-    {"phrase": STUDY_PHRASES[1], "mode": "llm"},
-    {"phrase": STUDY_PHRASES[1], "mode": "ed"},
-]
+
+def _block(mode: str) -> list[dict]:
+    return [{"phrase": p, "mode": mode} for p in STUDY_PHRASES]
+
+
+# 모드 블록 단위 스케줄 — 같은 모드의 문장 2개가 연달아 진행되어야
+# 블록이 끝난 시점에 NASA-TLX를 "모드당 1회"로 자연스럽게 물을 수 있다.
+SCHEDULE_ED_FIRST = _block("ed") + _block("llm")
+SCHEDULE_LLM_FIRST = _block("llm") + _block("ed")
+
+# 참가자 목록/세션 매니저에서 트라이얼 개수(len) 참조용 — 두 스케줄 길이는 동일
+STUDY_SCHEDULE = SCHEDULE_ED_FIRST
 
 RESULTS_PATH = "data/study_results.json"
+
+
+def next_schedule() -> tuple[list[dict], str]:
+    """다음 참가자에게 배정할 스케줄과 블록 순서 라벨을 반환.
+
+    저장된 세션 수의 짝/홀에 따라 ED-first / LLM-first를 교대시켜
+    참가자 간 모드-순서 효과를 상쇄한다(between-participant counterbalancing).
+    """
+    n_prior = len(_load_results())
+    if n_prior % 2 == 0:
+        return SCHEDULE_ED_FIRST, "ed_first"
+    return SCHEDULE_LLM_FIRST, "llm_first"
 
 
 def similarity(typed: str, target: str) -> float:
@@ -73,12 +94,14 @@ def _write_results(sessions: list[dict]) -> None:
 # 세션 단위 API — run()에서 사용
 # ---------------------------------------------------------------------------
 
-def start_session(participant: str, cal_profile: str = "Default") -> dict:
+def start_session(participant: str, cal_profile: str = "Default",
+                   block_order: str = "ed_first") -> dict:
     """새 study 세션을 시작하고, 결과 파일에 빈 세션을 즉시 등록한다 (세션 시작 시점부터 존재)."""
     session = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "participant": participant,
         "cal_profile": cal_profile,
+        "block_order": block_order,
         "trials": [],
     }
     sessions = _load_results()
@@ -129,10 +152,11 @@ def list_study_sessions() -> None:
         trials = session.get("trials", [])
         participant = session.get("participant") or "(미입력)"
         profile = session.get("cal_profile") or "Default"
+        order = session.get("block_order") or "ed_first"
         n = len(trials)
         avg_sim = sum(t["similarity_ratio"] for t in trials) / n if n else 0.0
         print(f"  [{i}] {session['timestamp']}  참가자: {participant}  보정: {profile}  "
-              f"트라이얼: {n}/{len(STUDY_SCHEDULE)}  평균 유사도: {avg_sim:.2f}")
+              f"순서: {order}  트라이얼: {n}/{len(STUDY_SCHEDULE)}  평균 유사도: {avg_sim:.2f}")
 
 
 def delete_study_session(index: int) -> None:
@@ -160,6 +184,7 @@ def _run_study_detail(session: dict) -> None:
     trials = session.get("trials", [])
     participant = session.get("participant") or "(미입력)"
     profile = session.get("cal_profile") or "Default"
+    order = session.get("block_order") or "ed_first"
 
     cv2.namedWindow("Study Session Detail")
 
@@ -167,7 +192,7 @@ def _run_study_detail(session: dict) -> None:
         canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
         cv2.putText(canvas, "ED vs LLM Study — Session Detail", (24, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, _GREEN_BRIGHT, 2)
-        info_line = f"{session['timestamp']}   participant: {participant}   cal: {profile}"
+        info_line = f"{session['timestamp']}   participant: {participant}   cal: {profile}   order: {order}"
         cv2.putText(canvas, info_line, (24, 66),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, _GREEN_MID, 1)
         cv2.line(canvas, (24, 78), (canvas_w - 24, 78), _GREEN_DIM, 1)
@@ -256,7 +281,8 @@ def run_study_session_manager() -> None:
                 avg_sim = sum(t["similarity_ratio"] for t in trials) / n if n else 0.0
                 participant = session.get("participant") or "(미입력)"
                 profile = session.get("cal_profile") or "Default"
-                line = (f"[{i}] {session['timestamp']}  {participant}  cal:{profile}  "
+                order = session.get("block_order") or "ed_first"
+                line = (f"[{i}] {session['timestamp']}  {participant}  cal:{profile}  order:{order}  "
                         f"{n}/{len(STUDY_SCHEDULE)} trials  avg sim {avg_sim:.2f}")
                 is_sel = (i == selected)
                 is_hov = (i == hovered) and not is_sel
