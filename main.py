@@ -102,6 +102,7 @@ from calibration_profiles import copy_default_as_profile
 from keystroke_injector import KeystrokeInjector
 from launcher import run_launcher
 import word_suggester
+import study_mode
 
 _MOTION_COOLDOWN_SEC = 1.5   # 한 번 인식 후 다음 모션 인식까지 최소 간격
 _MOTION_DISPLAY_SEC = 1.0    # 인식된 모션 글자를 화면에 유지하는 시간
@@ -207,8 +208,10 @@ def _ensure_ollama() -> None:
 
 def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | None,
         camera_index: int, inject: bool = False, start_guess: bool = False,
-        start_ed: bool = False, start_llm: bool = False) -> None:
-    if start_llm:
+        start_ed: bool = False, start_llm: bool = False,
+        study_schedule: list[dict] | None = None, study_participant: str = "",
+        study_cal_profile: str = "Default") -> None:
+    if start_llm or (study_schedule and any(t["mode"] == "llm" for t in study_schedule)):
         _ensure_ollama()
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -311,6 +314,19 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     _LLM_STABLE_FRAMES = 10
     _key_ignore_until = 0.0   # 단어 선택 직후 주입된 키가 CV2로 돌아와 단축키를 오트리거하는 것 방지
 
+    # ── Study 모드 상태 (ED vs LLM 비교 실험, study_schedule 주어졌을 때만 동작) ──
+    study_active = study_schedule is not None
+    study_idx = 0
+    study_waiting_next = True   # 첫 트라이얼도 SPACE로 시작
+    study_trial_start = 0.0
+    study_buffer_start_len = 0
+    study_backspace_count = 0
+    study_session: dict | None = None
+    if study_active:
+        _first = study_schedule[0]
+        ed_mode = (_first["mode"] == "ed")
+        llm_mode = (_first["mode"] == "llm")
+        study_session = study_mode.start_session(study_participant, study_cal_profile)
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
     word_suggester.preload()
@@ -578,6 +594,31 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         cv2.rectangle(annotated, (10, 10), (110, 90), (0, 0, 0), -1)
         cv2.putText(annotated, current_letter, (20, 75),
                     cv2.FONT_HERSHEY_SIMPLEX, 2.5, GREEN_BRIGHT, 4)
+
+        # ── Study 모드 배너 (목표 문장 / 트라이얼 진행 / 타이머) ─────────────
+        if study_active:
+            n_trials = len(study_schedule)
+            cv2.rectangle(annotated, (0, 0), (w, 96), (25, 15, 0), -1)
+            if study_waiting_next:
+                nxt = study_schedule[study_idx]
+                mode_txt = "ED" if nxt["mode"] == "ed" else "LLM"
+                line1 = f"STUDY  Trial {study_idx + 1}/{n_trials}  |  Mode: {mode_txt}  |  READY -- press SPACE to start"
+                cv2.putText(annotated, line1, (120, 34),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, (80, 220, 255), 2)
+            else:
+                cur = study_schedule[study_idx]
+                mode_txt = "ED" if cur["mode"] == "ed" else "LLM"
+                elapsed = now - study_trial_start
+                line1 = f"STUDY  Trial {study_idx + 1}/{n_trials}  |  Mode: {mode_txt}  |  {elapsed:.1f}s  |  ENTER when done"
+                cv2.putText(annotated, line1, (120, 34),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, (80, 255, 160), 2)
+                line2 = f"TARGET: \"{cur['phrase']}\""
+                cv2.putText(annotated, line2, (120, 66),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 1)
+                typed_so_far = text_buffer[study_buffer_start_len:]
+                line3 = f"typed:  {typed_so_far}"
+                cv2.putText(annotated, line3, (120, 90),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.52, (150, 200, 150), 1)
 
         # Guess 모드 패널 — 화면 중앙 하단 클릭 버튼 UI
         _btn_rects.clear()
@@ -913,6 +954,8 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                 _wi_stable_count = 0
                 _wi_last_added = ""
             elif action == "backspace" and ed_mode:
+                if study_active and not study_waiting_next:
+                    study_backspace_count += 1
                 ed_buffer = ed_buffer[:-1]
                 ed_candidates, ed_matched_prefix = word_suggester.suggest_ed(ed_buffer) if ed_buffer else ([], "")
                 _ed_stable_letter = ""
@@ -932,6 +975,8 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                     _llm_last_added = ""
                     print(f"[llm] 클릭 선택: {word}")
             elif action == "llm_backspace" and llm_mode:
+                if study_active and not study_waiting_next:
+                    study_backspace_count += 1
                 llm_buffer = llm_buffer[:-1]
                 # BKSP는 빠른 응답이 중요하므로 LLM 대신 ED로 즉시 갱신
                 llm_candidates, llm_source = word_suggester.suggest_ed(llm_buffer) if llm_buffer else ([], "")
@@ -942,10 +987,21 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         key = cv2.waitKey(1) & 0xFF
         if now < _key_ignore_until:
             key = 0xFF   # 쿨다운 중 — 주입된 키가 단축키를 오트리거하는 것 방지
-        # LLM 모드 중에는 q/ESC/1/2/3/BKSP만 허용 — 주입된 글자가 단축키 트리거 방지
-        if llm_mode and key not in (
-            27, ord("1"), ord("2"), ord("3"), 127
-        ):
+        # ESC/1/2/3/BKSP만 허용 — inject_string()으로 주입한 단어가 (OS 포커스가 cv2 창에
+        # 남아있을 경우) 그대로 cv2.waitKey로 되돌아와 'r'(재보정), 't'/'y'(테스트),
+        # 'e'(모드전환), 'i'(주입 토글) 같은 단축키를 오트리거하는 것을 방지한다.
+        # llm_mode는 항상 적용(기존 설계 — L모드는 ESC로만 나가도록 함).
+        # ed_mode는 study 진행 중에만 적용 — 평소 Live+ED Mode의 x키 토글은 그대로 유지.
+        # study 중 ENTER는 항상 허용(제출용). SPACE는 "대기 화면"일 때만 허용 —
+        # 트라이얼이 활성 상태일 때 허용하면 word+" " 주입의 스페이스가 되돌아와
+        # text_buffer에 스페이스가 중복으로 찍힌다.
+        _suggest_mode_allowed_keys = {27, ord("1"), ord("2"), ord("3"), 127}
+        if study_active:
+            _suggest_mode_allowed_keys |= {13, 10}
+            if study_waiting_next:
+                _suggest_mode_allowed_keys |= {ord(" ")}
+        _apply_suggest_whitelist = llm_mode or (ed_mode and study_active)
+        if _apply_suggest_whitelist and key not in _suggest_mode_allowed_keys:
             key = 0xFF
         if key == ord("q"):
             break
@@ -953,7 +1009,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             break
         if key == ord("i"):
             injector.toggle()
-        if not llm_mode and key == ord("w"):
+        if not llm_mode and not study_active and key == ord("w"):
             wi_mode = not wi_mode
             if wi_mode:
                 guess_mode = False
@@ -967,7 +1023,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             print(f"[wi] Word Injection 모드 {'ON' if wi_mode else 'OFF'}")
 
         # ED 모드 토글 (X키)
-        if not llm_mode and key == ord("x"):
+        if not llm_mode and not study_active and key == ord("x"):
             ed_mode = not ed_mode
             if ed_mode:
                 guess_mode = False
@@ -1064,7 +1120,13 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
 
         # SPACE
         if key == ord(" "):
-            if guess_mode:
+            if study_active and study_waiting_next:
+                study_waiting_next = False
+                study_trial_start = now
+                study_buffer_start_len = len(text_buffer)
+                print(f"[study] Trial {study_idx + 1}/{len(study_schedule)} 시작 "
+                      f"({study_schedule[study_idx]['mode']}) -- \"{study_schedule[study_idx]['phrase']}\"")
+            elif guess_mode:
                 if guess_buffer:
                     text_buffer += guess_buffer + " "
                 else:
@@ -1077,8 +1139,43 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             elif injector.enabled:
                 text_buffer += " "
 
+        # ENTER — study 모드에서 트라이얼 제출 (일반 모드에서는 미사용)
+        if study_active and not study_waiting_next and key in (13, 10):
+            elapsed = now - study_trial_start
+            cur = study_schedule[study_idx]
+            typed = text_buffer[study_buffer_start_len:].strip()
+            record = study_mode.append_trial(
+                study_session,
+                trial_index=study_idx,
+                mode=cur["mode"],
+                target_phrase=cur["phrase"],
+                typed_text=typed,
+                elapsed_sec=elapsed,
+                backspace_count=study_backspace_count,
+            )
+            print(f"[study] Trial {study_idx + 1}/{len(study_schedule)} 완료 -- "
+                  f"{elapsed:.1f}s, backspace={study_backspace_count}, "
+                  f"sim={record['similarity_ratio']:.2f}")
+
+            study_idx += 1
+            study_backspace_count = 0
+            ed_buffer = ""; ed_candidates = []; _ed_stable_letter = ""; _ed_stable_count = 0; _ed_last_added = ""
+            llm_buffer = ""; llm_candidates = []; llm_source = ""; _llm_stable_letter = ""; _llm_stable_count = 0; _llm_last_added = ""
+            llm_context = ""
+
+            if study_idx >= len(study_schedule):
+                print("[study] 모든 트라이얼 완료 -- 런처로 복귀")
+                break
+
+            nxt = study_schedule[study_idx]
+            ed_mode = (nxt["mode"] == "ed")
+            llm_mode = (nxt["mode"] == "llm")
+            study_waiting_next = True
+
         # Backspace (macOS: 127)
         if key == 127:
+            if study_active and not study_waiting_next:
+                study_backspace_count += 1
             if guess_mode:
                 guess_buffer = guess_buffer[:-1]
                 guess_candidates, guess_matched_prefix = word_suggester.suggest(guess_buffer) if guess_buffer else ([], "")
@@ -1091,7 +1188,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         # injection ON 중에는 주입된 키가 cv2로 돌아와 단축키를 오트리거할 수 있으므로 억제
         if injector.enabled:
             continue
-        if not llm_mode and key == ord("g"):
+        if not llm_mode and not study_active and key == ord("g"):
             guess_mode = not guess_mode
             if guess_mode:
                 wi_mode = False
@@ -1190,6 +1287,10 @@ def main() -> None:
                         help="저장된 테스트 세션 목록(인덱스, 참가자, 시각, 점수) 출력 후 종료")
     parser.add_argument("--delete-test-session", type=int, default=None, metavar="INDEX",
                         help="--list-test-sessions로 확인한 인덱스의 세션 하나만 삭제 후 종료")
+    parser.add_argument("--list-study-sessions", action="store_true",
+                        help="저장된 ED vs LLM study 세션 목록(참가자, 트라이얼 수, 평균 유사도) 출력 후 종료")
+    parser.add_argument("--delete-study-session", type=int, default=None, metavar="INDEX",
+                        help="--list-study-sessions로 확인한 인덱스의 study 세션 하나만 삭제 후 종료")
     parser.add_argument("--inject", action="store_true",
                         help="시작할 때부터 키스트로크 주입 ON")
     parser.add_argument("--participant", type=str, default=None,
@@ -1208,6 +1309,12 @@ def main() -> None:
         return
     if args.delete_test_session is not None:
         delete_session(args.delete_test_session)
+        return
+    if args.list_study_sessions:
+        study_mode.list_study_sessions()
+        return
+    if args.delete_study_session is not None:
+        study_mode.delete_study_session(args.delete_study_session)
         return
 
     camera_index = args.camera if args.camera is not None else auto_camera_index()
@@ -1246,6 +1353,10 @@ def main() -> None:
             run_session_manager()
             continue
 
+        if mode == "study_sessions":
+            study_mode.run_study_session_manager()
+            continue
+
         # live / test_ordered / test_random — 프로필 선택 필요
         profile_result = run_profile_selector(cal_data, motion_cal_data)
         if profile_result is None:
@@ -1267,6 +1378,12 @@ def main() -> None:
         elif mode == "live_llm":
             run(detector, active_cal, active_motion_cal, camera_index,
                 inject=True, start_llm=True)
+
+        elif mode == "study":
+            participant = args.participant or run_text_input("Enter participant name / number:")
+            run(detector, active_cal, active_motion_cal, camera_index,
+                inject=True, study_schedule=study_mode.STUDY_SCHEDULE,
+                study_participant=participant, study_cal_profile=profile_name)
 
         elif mode in ("test_ordered", "test_random"):
             randomize = (mode == "test_random")

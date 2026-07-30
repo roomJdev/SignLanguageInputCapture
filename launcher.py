@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 
 _WIN = "Sign-to-Type"
-_W, _H = 820, 660
 
 _MODES = [
     "Calibrate",
@@ -15,14 +14,20 @@ _MODES = [
     "Live + LLM Mode",
     "Test (Ordered)",
     "Test (Random)",
+    "ED vs LLM Study",
     "Test Results",
+    "ED vs LLM Results",
 ]
 _KEYS = ["calibrate", "live", "live_inject", "live_guess", "live_ed", "live_llm",
-         "test_ordered", "test_random", "sessions"]
+         "test_ordered", "test_random", "study", "sessions", "study_sessions"]
 
 _ROW_TOP = 130
 _ROW_H   = 54
 _PAD_X   = 48
+_BOTTOM_PAD = 74   # 하단 구분선 + 안내 텍스트 공간
+
+_W = 820
+_H = _ROW_TOP + len(_MODES) * _ROW_H + _BOTTOM_PAD   # 항목 수에 맞춰 자동 계산
 
 _C_BRIGHT = (80, 255, 120)
 _C_MID    = (90, 200, 110)

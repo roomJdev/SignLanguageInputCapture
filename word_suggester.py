@@ -42,13 +42,28 @@ except ImportError:
     print("[word_suggester] rapidfuzz 미설치 — ED 모드 비활성화")
 
 _en_words: list[str] = []
+_en_words_set: set[str] = set()
 
 
 def preload() -> None:
-    global _en_words
+    global _en_words, _en_words_set
     if not _en_words:
         _en_words = list(iter_wordlist("en"))
+        _en_words_set = set(_en_words)
         print(f"[word_suggester] {len(_en_words):,}개 단어 로드 완료")
+
+
+def _ensure_own_word(prefix_lower: str, candidates: list[str], n: int) -> list[str]:
+    """prefix 자체가 이미 완결된 단어("a", "i" 같은 관사/대명사)면 후보 맨 앞에 강제 포함.
+
+    LLM은 prefix로 "시작하는 더 긴 단어"만 제안하는 경향이 있어(예: a -> answer,
+    absolutely, amazing), 정작 사용자가 입력하려던 짧은 단어 자체가 후보에서
+    누락되는 경우가 있다. 이 경우 완결형 손모양을 계속 유지해도 선택할 옵션이
+    없어 진행이 막히므로, 사전에 존재하는 완전한 단어면 항상 후보에 넣는다.
+    """
+    if prefix_lower in _en_words_set and prefix_lower not in candidates:
+        candidates = [prefix_lower] + candidates
+    return candidates[:n]
 
 
 def _prefix_scan(p: str, n: int) -> list[str]:
@@ -212,7 +227,7 @@ def suggest_llm(context: str, prefix: str, n: int = 3) -> tuple[list[str], str]:
         # prefix로 시작하는 것만 필터 (LLM이 지시를 무시할 경우 대비)
         filtered = [w for w in words if w.startswith(prefix.lower()) and w.isalpha()]
         if filtered:
-            return filtered[:n], "llm"
+            return _ensure_own_word(prefix.lower(), filtered, n), "llm"
         # prefix 조건 충족 단어가 없으면 ED로 fallback
         return suggest_ed(prefix, n)
     except Exception:
