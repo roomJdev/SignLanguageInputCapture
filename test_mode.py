@@ -18,7 +18,7 @@ import numpy as np
 
 from features import extract, extract_tip_frame
 from sign_classifier import classify, classify_calibrated
-from motion_classifier import (classify_motion, MOTION_TIP,
+from motion_classifier import (classify_motion, MOTION_TIP, MOTION_TRIGGER_LETTER,
                                MOTION_MIN_FRAMES, MOTION_STOP_VEL, MOTION_STOP_COUNT)
 from motion_calibration import MOTION_FRAMES
 from ml_models import ModelManager
@@ -36,9 +36,13 @@ _MODEL_SHORT_NAMES = {
 
 TEST_SEQUENCE = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + list("0123456789")
 MOTION_SYMBOLS = {"J", "Z"}
-RESULTS_PATH = "data/test_results.json"
+RESULTS_PATH = "data_new0731/test_results.json"
 FEEDBACK_DISPLAY_SEC = 1.0
 CAPTURE_FPS_DELAY = 33   # ms
+
+# macOS / Windows / Linux 방향키 코드 (waitKeyEx 기준) — 진행자가 skip/back을 조작할 때 사용
+_LEFT_KEYS = {63234, 2424832, 65361}
+_RIGHT_KEYS = {63235, 2555904, 65363}
 
 _REF_IMAGE_DIR = os.path.join(os.path.dirname(__file__), "resources", "letters")
 _REF_DISPLAY_HEIGHT = 360
@@ -631,6 +635,9 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
 
     sessions = _load_results()
     session_results: dict[str, dict] = {}
+    # B/←로 되돌아가 재시도하면서 덮어써지는 이전 시도들을 보존 —
+    # 최종 결과 기준 정확도와 별개로 "최초 시도 기준" 정확도도 나중에 계산 가능하게
+    discarded_results: dict[str, list[dict]] = {}
 
     idx = 0
     state = "waiting"   # waiting -> recording(모션만) -> feedback -> waiting
@@ -646,7 +653,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
     participant_label = participant or "(미입력)"
     print(f"\n테스트 모드 시작 — 참가자: {participant_label}  "
           f"{len(sequence)}개 심볼 ({'랜덤' if randomize else '순서대로'})")
-    print("심볼을 따라한 뒤 SPACE를 누르세요. S: 건너뛰기  Q: 중단 및 결과 저장\n")
+    print("심볼을 따라한 뒤 SPACE를 누르세요. S/→: 건너뛰기  B/←: 뒤로  Q: 중단 및 결과 저장\n")
 
     while idx < len(sequence):
         target = sequence[idx]
@@ -684,10 +691,13 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 last_predicted = predicted
                 last_correct = (predicted == target)
                 last_model_results = {"DTW": {"predicted": predicted, "correct": last_correct}}
+                if target in session_results:
+                    discarded_results.setdefault(target, []).append(session_results[target])
                 session_results[target] = {
                     "predicted": predicted,
                     "correct": last_correct,
                     "models": last_model_results,
+                    "raw_window": window.tolist(),
                 }
                 print(f"  [{target}] -> {predicted}  {'OK' if last_correct else 'X'}")
                 state = "feedback"
@@ -743,7 +753,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             cv2.putText(annotated, instruction, (20, h - 24),
                         cv2.FONT_HERSHEY_SIMPLEX, scale, _GREEN_DIM, 2)
 
-        cv2.putText(annotated, "SPACE: test  /  S: skip  /  Q: stop & save",
+        cv2.putText(annotated, "SPACE: test  /  S or ->: skip  /  B or <-: back  /  Q: stop & save",
                     (20, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, _GREEN_DIM, 1)
 
         ref_img = reference_images.get(target)
@@ -752,25 +762,41 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
 
         cv2.imshow("Test Mode", annotated)
 
-        key = cv2.waitKey(CAPTURE_FPS_DELAY) & 0xFF
+        # waitKeyEx로 원본 키코드를 받아 화살표 키(좌/우)까지 인식 —
+        # 스플릿 키보드 등에서 참가자는 SPACE만, 진행자는 화살표로 skip/back을 조작할 수 있게.
+        key_raw = cv2.waitKeyEx(CAPTURE_FPS_DELAY)
+        key = key_raw & 0xFF
         space_down = (key == ord(" "))
 
         if space_down and not space_held and state == "waiting":
             if is_motion:
-                if motion_cal_data:
-                    state = "recording"
-                    motion_buffer = []
-                    motion_tip_prev = None
-                    motion_slow_count = 0
-                else:
+                if not motion_cal_data:
                     print(f"  [{target}] 모션 보정 데이터 없음 — 건너뜀")
                     idx += 1
+                elif not landmarks_list:
+                    print(f"  [{target}] 손이 감지되지 않음 — 다시 시도하세요")
+                else:
+                    # 라이브 인식과 동일하게, 시작 트리거 자세(J: I, Z: D)인지 확인 후에만
+                    # 녹화 시작 — 엉뚱한 손가락으로 해도 통과되는 것을 방지
+                    trigger = MOTION_TRIGGER_LETTER[target]
+                    letter_cal = _filter_cal(cal_data, False)
+                    current_static = classify_calibrated(landmarks_list[0], letter_cal) if letter_cal else classify(landmarks_list[0])
+                    if current_static != trigger:
+                        print(f"  [{target}] 시작 자세가 '{trigger}'가 아님(현재: {current_static}) — "
+                              f"올바른 손모양으로 준비 후 다시 SPACE")
+                    else:
+                        state = "recording"
+                        motion_buffer = []
+                        motion_tip_prev = None
+                        motion_slow_count = 0
             elif landmarks_list:
                 lm = landmarks_list[0]
                 active_cal = _filter_cal(cal_data, is_digit)
+                raw_vector = None
                 if active_cal:
                     vec = extract(lm)
                     model_preds = model_manager.predict(vec, is_digit)
+                    raw_vector = vec.tolist()
                 else:
                     model_preds = {"Rule-based": classify(lm)} if not is_digit else {}
 
@@ -782,8 +808,11 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 predicted = model_preds.get("kNN (custom)", model_preds.get("Rule-based", "?"))
                 last_predicted = predicted
                 last_correct = (predicted == target)
+                if target in session_results:
+                    discarded_results.setdefault(target, []).append(session_results[target])
                 session_results[target] = {
                     "predicted": predicted,
+                    "raw_vector": raw_vector,
                     "correct": last_correct,
                     "models": last_model_results,
                 }
@@ -791,11 +820,18 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 print(f"  [{target}] -> {summary or '?'}")
                 state = "feedback"
                 feedback_until = time.time() + FEEDBACK_DISPLAY_SEC
-        elif key == ord("s"):
+        elif key == ord("s") or key_raw in _RIGHT_KEYS:
             print(f"  [{target}] 건너뜀")
             idx += 1
             state = "waiting"
             motion_buffer = []
+        elif (key == ord("b") or key_raw in _LEFT_KEYS) and idx > 0:
+            # 스킵과 동일하게 제한 없이 되돌아감(연속으로 누르면 여러 단계 이동) —
+            # 진행자가 화살표 키로 조작(스플릿 키보드에서 참가자는 SPACE만 사용)
+            idx -= 1
+            state = "waiting"
+            motion_buffer = []
+            print(f"  [{sequence[idx]}] 다시 시도")
         elif key == ord("q"):
             print("테스트 중단 — 현재까지 결과를 저장합니다.")
             break
@@ -815,8 +851,14 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
         "cal_profile": cal_profile,
         "randomize": randomize,
         "results": session_results,
+        "discarded_attempts": discarded_results,
     }
     _save_session(sessions, session)
+
+    if discarded_results:
+        n_redone = sum(len(v) for v in discarded_results.values())
+        print(f"(재시도로 덮어써진 이전 시도 {n_redone}건은 discarded_attempts에 별도 보존됨: "
+              f"{sorted(discarded_results.keys())})")
 
     correct_count = sum(1 for r in session_results.values() if r["correct"])
     total = len(session_results)

@@ -4,6 +4,7 @@
 SPACE를 누르면 그 순간부터 MOTION_FRAMES 프레임(약 1초) 동안 자동으로 녹화된다.
 """
 
+import json
 import os
 import numpy as np
 import cv2
@@ -29,9 +30,9 @@ def _migrate_10d_to_2d(data: dict) -> dict:
     return migrated
 
 MOTION_LETTERS = ["J", "Z"]
-MOTION_CALIBRATION_PATH = "data/motion_calibration_data.npy"
+MOTION_CALIBRATION_PATH = "data_new0731/motion_calibration_data.npy"
 MOTION_FRAMES = 30          # ~1초 (30fps 기준) 동안의 프레임 수
-MOTION_REPS = 5             # 심볼당 반복 녹화 횟수
+MOTION_REPS = 3             # 심볼당 반복 녹화 횟수 (Wobbrock et al. 2007: DTW는 템플릿 3개면 9개 대비 99.5% 정확도)
 CAPTURE_FPS_DELAY = 33      # ms
 
 _GREEN_BRIGHT = (80, 255, 120)
@@ -87,7 +88,10 @@ def load_motion_calibration() -> dict | None:
 def save_motion_calibration(data: dict) -> None:
     os.makedirs(os.path.dirname(MOTION_CALIBRATION_PATH), exist_ok=True)
     np.save(MOTION_CALIBRATION_PATH, data)
-    print(f"모션 보정 데이터 저장 완료: {MOTION_CALIBRATION_PATH}")
+    json_path = os.path.splitext(MOTION_CALIBRATION_PATH)[0] + ".json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({k: [rep.tolist() for rep in reps] for k, reps in data.items()}, f, indent=2)
+    print(f"모션 보정 데이터 저장 완료: {MOTION_CALIBRATION_PATH} (+ {json_path})")
 
 
 def run_motion_calibration(detector, camera_index: int = 0) -> dict:
@@ -100,7 +104,10 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
     if not cap.isOpened():
         raise RuntimeError(f"카메라 [{camera_index}]를 열 수 없습니다.")
 
-    motion_data: dict[str, list[np.ndarray]] = load_motion_calibration() or {}
+    # 기존 누적 데이터를 베이스로 삼지 않음 — 이번 세션에서 새로 찍은 반복만 저장
+    # (예전엔 load_motion_calibration()으로 기존 데이터를 이어받아서, 여러 사람이
+    #  캘리브레이션할수록 J/Z 템플릿이 끝없이 누적되는 문제가 있었음)
+    motion_data: dict[str, list[np.ndarray]] = {}
     reference_images = _load_reference_images()
     letter_index = 0
     state = "waiting"   # waiting -> recording -> waiting

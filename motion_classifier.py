@@ -22,7 +22,7 @@ MOTION_TIP = {"J": HD.PINKY_TIP, "Z": HD.INDEX_TIP}
 MOTION_VEL_TRIGGER = 0.15
 
 # 수집 조기 종료 파라미터
-MOTION_MIN_FRAMES = 14     # 이 프레임 수 이상 수집해야 조기 종료 허용 (낮으면 D/I 정지 중 미세 떨림이 Z/J로 오인식)
+MOTION_MIN_FRAMES = 15     # 이 프레임 수 이상 수집해야 조기 종료 허용 (30fps 기준 500ms — HCI dwell-time 문헌의 300-500ms 구간과 일치)
 MOTION_STOP_VEL = 0.05     # 이 속도 이하를 MOTION_STOP_COUNT 프레임 연속이면 동작 완료로 판단
 MOTION_STOP_COUNT = 3      # 연속 정지 프레임 수
 

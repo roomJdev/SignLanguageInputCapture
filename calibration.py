@@ -1,5 +1,6 @@
 """보정 세션 — 사용자 손 제스처를 직접 수집해 분류기를 개인화."""
 
+import json
 import os
 import numpy as np
 import cv2
@@ -8,9 +9,13 @@ from features import extract
 
 # J, Z는 모션 필요로 제외
 LETTERS = list("ABCDEFGHIKLMNOPQRSTUVWXY") + list("0123456789")
-CALIBRATION_PATH = "data/calibration_data.npy"
+CALIBRATION_PATH = "data_new0731/calibration_data.npy"
 SAMPLES_PER_LETTER = 30
 CAPTURE_FPS_DELAY = 33   # ms
+
+# macOS / Windows / Linux 방향키 코드 (waitKeyEx 기준) — 진행자가 skip/back을 조작할 때 사용
+_LEFT_KEYS = {63234, 2424832, 65361}
+_RIGHT_KEYS = {63235, 2555904, 65363}
 
 _REF_IMAGE_DIR = os.path.join(os.path.dirname(__file__), "resources", "letters")
 _REF_DISPLAY_HEIGHT = 360   # 화면에 표시할 레퍼런스 이미지 높이(px)
@@ -151,7 +156,10 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
 def save_calibration(data: dict) -> None:
     os.makedirs(os.path.dirname(CALIBRATION_PATH), exist_ok=True)
     np.save(CALIBRATION_PATH, data)
-    print(f"보정 데이터 저장 완료: {CALIBRATION_PATH}")
+    json_path = os.path.splitext(CALIBRATION_PATH)[0] + ".json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({k: v.tolist() for k, v in data.items()}, f, indent=2)
+    print(f"보정 데이터 저장 완료: {CALIBRATION_PATH} (+ {json_path})")
 
 
 def run_calibration(detector, camera_index: int = 0) -> dict:
@@ -172,7 +180,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
     letter_index = 0
     state = "waiting"
     buffer: list[np.ndarray] = []
-    status_msg = "SPACE: start capture  /  S: skip  /  Q: save & quit"
+    status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
     space_held = False   # 스페이스바 연타/홀드 시 캡처 완료 직후 재트리거 방지용 엣지 감지
 
     print(f"\n보정 시작 — {len(LETTERS)}개 심볼 ({', '.join(LETTERS)})")
@@ -198,7 +206,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
                 buffer = []
                 letter_index += 1
                 state = "waiting"
-                status_msg = "SPACE: start capture  /  S: skip  /  Q: save & quit"
+                status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
 
         # --- HUD ---
         overlay = annotated.copy()
@@ -248,7 +256,10 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
 
         cv2.imshow("Calibration Session", annotated)
 
-        key = cv2.waitKey(CAPTURE_FPS_DELAY) & 0xFF
+        # waitKeyEx로 원본 키코드를 받아 화살표 키(좌/우)까지 인식 —
+        # 스플릿 키보드 등에서 참가자는 SPACE만, 진행자는 화살표로 skip/back을 조작할 수 있게.
+        key_raw = cv2.waitKeyEx(CAPTURE_FPS_DELAY)
+        key = key_raw & 0xFF
         space_down = (key == ord(" "))
 
         if space_down and not space_held and state == "waiting":
@@ -257,12 +268,19 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
                 buffer = []
             else:
                 status_msg = "Warning: no hand detected. Place your hand in front of the camera."
-        elif key == ord("s"):
+        elif key == ord("s") or key_raw in _RIGHT_KEYS:
             print(f"  [{letter}] 건너뜀")
             letter_index += 1
             state = "waiting"
             buffer = []
-            status_msg = "SPACE: start capture  /  S: skip  /  Q: save & quit"
+            status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
+        elif (key == ord("b") or key_raw in _LEFT_KEYS) and letter_index > 0:
+            # 스킵과 동일하게 제한 없이 되돌아감 — 진행자가 화살표 키로 조작
+            letter_index -= 1
+            state = "waiting"
+            buffer = []
+            print(f"  [{LETTERS[letter_index]}] 다시 캡처")
+            status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
         elif key == ord("q"):
             print("보정 중단 — 현재까지 수집된 데이터로 저장합니다.")
             break

@@ -9,7 +9,9 @@ MediaPipe Hand Landmarker 기반으로 손 관절 21개 좌표를 추출하고, 
 - **ASL 알파벳 A–Z 전체 + 숫자 0–9 인식** — 정적 24글자(A-Y 중 J 제외)는 k-NN, J·Z는 모션(DTW) 기반
 - **시점 불변 25차원 feature vector**(굽힘 각도 10 + 손끝 간 거리 10 + 손목 거리 5)로 정적 심볼 분류 — 카메라 각도뿐 아니라 **좌/우 손 교차 인식도 별도 처리 없이 지원**
 - **J, Z 모션 인식**: 정적 분류기가 'I'(J 트리거) 또는 'D'(Z 트리거)를 감지하면 0.8초 모니터링 버퍼 시작 → 움직임 감지 시 단일 손가락 끝 궤적 수집 → DTW 비교
-- **개인 보정 세션**: 사용자 손 형태에 맞게 k-NN/모션 템플릿 최적화, 철자별 손모양 레퍼런스 이미지 오버레이 제공
+- **개인 보정 세션**: 사용자 손 형태에 맞게 k-NN/모션 템플릿 최적화, 철자별 손모양 레퍼런스 이미지 오버레이 제공 — 정적 심볼은 1회 캡처(30프레임), J/Z 모션은 3회 반복 캡처(Wobbrock et al. 2007 기준, 템플릿 3개면 9개 대비 99.5% 정확도). 매 보정 세션은 항상 빈 상태에서 시작해 이번에 찍은 반복만 저장 — 과거엔 이전 캘리브레이션 데이터를 이어받아 여러 사람이 보정할수록 J/Z 템플릿이 끝없이 누적되는 버그가 있었음(수정됨)
+- **보정/테스트 모드 skip·back 네비게이션**: `S`(또는 →)로 건너뛰기, `B`(또는 ←)로 되돌아가 재시도 — 스킵과 동일하게 횟수 제한 없음. 화살표 키코드는 `cv2.waitKeyEx`로 인식하므로 분리형 키보드에서 참가자는 SPACE만, 진행자는 화살표로 조작 가능
+- **테스트 모드 원본 데이터 보존**: 판정에 사용한 원본 feature vector(정적)/손끝 궤적(모션)을 `raw_vector`/`raw_window`로 함께 저장 — 이후 분류 알고리즘이나 모델이 바뀌어도 과거 세션 데이터를 재채점할 수 있음. `B`로 재시도해 덮어써진 이전 시도는 폐기하지 않고 `discarded_attempts`에 별도 보존
 - **철자 모드 / 숫자 모드 전환**(`E` 키): 0/O, 2/V, 9/F처럼 손모양이 겹치는 심볼을 모드별로 분리해 오분류 감소
 - **OS-level 키스트로크 주입** (`I` 키 토글): 인식된 글자를 외부 앱에 직접 입력
 - **Guess 모드** (`G` 키 또는 런처에서 선택): 수화로 prefix를 입력하면 wordfreq 기반 영어 단어 후보 3개를 화면 중앙에 표시, 마우스 클릭 또는 키보드 `1`/`2`/`3`으로 단어 선택 후 외부 앱에 주입
@@ -253,8 +255,11 @@ Guess 모드와 달리 타겟 앱의 포커스를 유지한 채 연속으로 단
 | 키 | 동작 |
 |---|---|
 | `SPACE` | 현재 심볼 제스처 수집 시작 |
-| `S` | 현재 심볼 건너뛰기 |
+| `S` / `→` | 현재 심볼 건너뛰기 |
+| `B` / `←` | 이전 심볼로 되돌아가 재시도 (횟수 제한 없음) |
 | `Q` | 현재까지 저장 후 종료 |
+
+> 테스트 모드도 동일한 SPACE(응답) / S·→(건너뛰기) / B·←(되돌아가기) / Q(중단·저장) 키 구성을 사용합니다.
 
 ## 프로젝트 구조
 
@@ -274,12 +279,13 @@ SignLanguageInputCapture/
 ├── keystroke_injector.py      # OS-level 키스트로크 주입 (pyautogui), 안정화 로직
 ├── test_mode.py               # 테스트 모드, 다중 모델 비교, 세션 저장/통계/관리 UI
 ├── requirements.txt
-├── data/                      # 보정 데이터 및 세션 기록 (gitignore)
-│   ├── calibration_data.npy
-│   ├── motion_calibration_data.npy
-│   ├── cal_<name>.npy / motion_cal_<name>.npy
+├── data_new0731/               # 보정 데이터 및 세션 기록 (gitignore) — 2026-07-31 누적 버그(아래 참고) 수정 이후 저장 경로
+│   ├── calibration_data.npy / .json     # .npy(로딩용) + .json(사람이 읽을 수 있는 사본) 쌍으로 저장
+│   ├── motion_calibration_data.npy / .json
+│   ├── cal_<name>.npy(.json) / motion_cal_<name>.npy(.json)
 │   ├── calibration_profiles.json
-│   └── test_results.json
+│   └── test_results.json      # 세션마다 raw_vector/raw_window + discarded_attempts 포함
+├── data/                       # 구버전(누적 버그 존재) 데이터 — 더 이상 쓰지 않음, 참고용으로만 보존
 └── resources/
     ├── hand_landmarker.task        # MediaPipe 모델
     ├── asl_alphabet_ref_wikipedia.png

@@ -12,9 +12,9 @@ import time
 
 import numpy as np
 
-PROFILES_PATH = "data/calibration_profiles.json"
-DEFAULT_STATIC_PATH = "data/calibration_data.npy"
-DEFAULT_MOTION_PATH = "data/motion_calibration_data.npy"
+PROFILES_PATH = "data_new0731/calibration_profiles.json"
+DEFAULT_STATIC_PATH = "data_new0731/calibration_data.npy"
+DEFAULT_MOTION_PATH = "data_new0731/motion_calibration_data.npy"
 
 
 # ---------------------------------------------------------------------------
@@ -57,12 +57,22 @@ def copy_default_as_profile(name: str) -> bool:
         return False
 
     slug = safe.replace(" ", "_")
-    static_dst = f"data/cal_{slug}.npy"
-    motion_dst = f"data/motion_cal_{slug}.npy" if os.path.exists(DEFAULT_MOTION_PATH) else None
+    static_dst = f"data_new0731/cal_{slug}.npy"
+    motion_dst = f"data_new0731/motion_cal_{slug}.npy" if os.path.exists(DEFAULT_MOTION_PATH) else None
 
+    os.makedirs(os.path.dirname(static_dst), exist_ok=True)
     shutil.copy2(DEFAULT_STATIC_PATH, static_dst)
     if motion_dst:
         shutil.copy2(DEFAULT_MOTION_PATH, motion_dst)
+
+    # 사람이 읽을 수 있는 JSON 사본도 있으면 같이 복사 (save_calibration/save_motion_calibration이 생성)
+    default_static_json = os.path.splitext(DEFAULT_STATIC_PATH)[0] + ".json"
+    if os.path.exists(default_static_json):
+        shutil.copy2(default_static_json, os.path.splitext(static_dst)[0] + ".json")
+    if motion_dst:
+        default_motion_json = os.path.splitext(DEFAULT_MOTION_PATH)[0] + ".json"
+        if os.path.exists(default_motion_json):
+            shutil.copy2(default_motion_json, os.path.splitext(motion_dst)[0] + ".json")
 
     profiles = [p for p in _load_index() if p["name"] != safe]
     profiles.append({
