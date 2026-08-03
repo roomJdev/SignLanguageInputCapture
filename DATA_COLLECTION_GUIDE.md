@@ -91,10 +91,13 @@ python main.py
 data_new0731/
 ├── cal_<이름>.npy / .json                        # 보정 데이터 (프로필명으로 저장, .json은 사람이 읽을 수 있는 사본)
 ├── cal_<이름>_landmarks.npy / .json              # 위 보정 데이터의 가공 전 원본 21관절 좌표
+├── cal_<이름>_videos/<symbol>.mp4                # 심볼별 캡처 화면 원본(약 1초)
 ├── motion_cal_<이름>.npy / .json                 # J/Z 모션 보정 데이터
 ├── motion_cal_<이름>_landmarks.npy / .json       # 위 모션 데이터의 가공 전 원본 21관절 좌표(프레임별)
+├── motion_cal_<이름>_videos/<symbol>_rep<n>.mp4  # 반복별 캡처 화면 원본
 ├── calibration_profiles.json
-└── test_results.json    # 테스트 결과 (raw_vector/raw_window + raw_landmarks/raw_landmarks_window, discarded_attempts 포함)
+├── test_media/<참가자>_<세션시각>/<symbol>.jpg(정적) 또는 .mp4(모션)   # 테스트 시도별 캡처 화면 원본
+└── test_results.json    # 테스트 결과 (raw_vector/raw_window + raw_landmarks/raw_landmarks_window + frame_path/video_path, discarded_attempts 포함)
 ```
 
 ```bash

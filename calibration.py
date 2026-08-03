@@ -5,7 +5,7 @@ import os
 import numpy as np
 import cv2
 
-from features import extract
+from features import extract, save_video_clip
 
 # J, Z는 모션 필요로 제외
 LETTERS = list("ABCDEFGHIKLMNOPQRSTUVWXY") + list("0123456789")
@@ -13,8 +13,11 @@ CALIBRATION_PATH = "data_new0731/calibration_data.npy"
 # MediaPipe 원본 21관절 좌표(정규화된 x,y,z) — feature vector로 가공되기 전 데이터.
 # 나중에 feature 설계 자체가 바뀌어도 처음부터 다시 계산할 수 있도록 별도 보존.
 CALIBRATION_LANDMARKS_PATH = "data_new0731/calibration_landmarks.npy"
+# 심볼별 캡처 화면 원본(비디오) — 심볼당 1개 파일로 덮어써 저장
+CALIBRATION_VIDEOS_DIR = "data_new0731/calibration_videos"
 SAMPLES_PER_LETTER = 30
 CAPTURE_FPS_DELAY = 33   # ms
+_VIDEO_FPS = round(1000 / CAPTURE_FPS_DELAY)
 
 # macOS / Windows / Linux 방향키 코드 (waitKeyEx 기준) — 진행자가 skip/back을 조작할 때 사용
 _LEFT_KEYS = {63234, 2424832, 65361}
@@ -91,6 +94,7 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
     state = "waiting"
     buffer: list[np.ndarray] = []
     raw_buffer: list[np.ndarray] = []
+    frame_buffer: list[np.ndarray] = []
     space_held = False
     status_msg = "Open your hand flat, then press SPACE to capture"
 
@@ -109,9 +113,11 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
             if landmarks_list:
                 buffer.append(extract(landmarks_list[0]))
                 raw_buffer.append(landmarks_list[0].copy())
+                frame_buffer.append(frame.copy())
             if len(buffer) >= SAMPLES_PER_LETTER:
                 calibration_data["SPACE"] = np.stack(buffer)
                 calibration_landmarks["SPACE"] = np.stack(raw_buffer)
+                save_video_clip(frame_buffer, os.path.join(CALIBRATION_VIDEOS_DIR, "SPACE.mp4"), _VIDEO_FPS)
                 print(f"  [SPACE] 보정 완료 ({len(buffer)} 샘플)")
                 state = "done"
 
@@ -154,6 +160,7 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
                 state = "capturing"
                 buffer = []
                 raw_buffer = []
+                frame_buffer = []
             else:
                 status_msg = "Warning: no hand detected."
         elif key == ord("q"):
@@ -208,6 +215,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
     state = "waiting"
     buffer: list[np.ndarray] = []
     raw_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표
+    frame_buffer: list[np.ndarray] = []   # 캡처 화면 원본(비디오 저장용)
     status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
     space_held = False   # 스페이스바 연타/홀드 시 캡처 완료 직후 재트리거 방지용 엣지 감지
 
@@ -229,12 +237,15 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
             if landmarks_list:
                 buffer.append(extract(landmarks_list[0]))
                 raw_buffer.append(landmarks_list[0].copy())
+                frame_buffer.append(frame.copy())
             if len(buffer) >= SAMPLES_PER_LETTER:
                 calibration_data[letter] = np.stack(buffer)   # (30, 25)
                 calibration_landmarks[letter] = np.stack(raw_buffer)   # (30, 21, 3)
+                save_video_clip(frame_buffer, os.path.join(CALIBRATION_VIDEOS_DIR, f"{letter}.mp4"), _VIDEO_FPS)
                 print(f"  [{letter}] 보정 완료 ({len(buffer)} 샘플)")
                 buffer = []
                 raw_buffer = []
+                frame_buffer = []
                 letter_index += 1
                 state = "waiting"
                 status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
@@ -298,6 +309,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
                 state = "capturing"
                 buffer = []
                 raw_buffer = []
+                frame_buffer = []
             else:
                 status_msg = "Warning: no hand detected. Place your hand in front of the camera."
         elif key == ord("s") or key_raw in _RIGHT_KEYS:
@@ -306,6 +318,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
             state = "waiting"
             buffer = []
             raw_buffer = []
+            frame_buffer = []
             status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
         elif (key == ord("b") or key_raw in _LEFT_KEYS) and letter_index > 0:
             # 스킵과 동일하게 제한 없이 되돌아감 — 진행자가 화살표 키로 조작
@@ -313,6 +326,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
             state = "waiting"
             buffer = []
             raw_buffer = []
+            frame_buffer = []
             print(f"  [{LETTERS[letter_index]}] 다시 캡처")
             status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
         elif key == ord("q"):

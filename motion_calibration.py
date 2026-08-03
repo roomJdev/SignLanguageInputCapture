@@ -9,7 +9,7 @@ import os
 import numpy as np
 import cv2
 
-from features import extract_tip_frame
+from features import extract_tip_frame, save_video_clip
 from motion_classifier import MOTION_TIP
 
 # extract_motion_frame의 손끝 순서: [thumb=4, index=8, middle=12, ring=16, pinky=20]
@@ -33,9 +33,12 @@ MOTION_LETTERS = ["J", "Z"]
 MOTION_CALIBRATION_PATH = "data_new0731/motion_calibration_data.npy"
 # MediaPipe 원본 21관절 궤적(프레임별) — DTW 비교용 손끝 2차원 궤적으로 가공되기 전 데이터
 MOTION_CALIBRATION_LANDMARKS_PATH = "data_new0731/motion_calibration_landmarks.npy"
+# 반복별 캡처 화면 원본(비디오) — <심볼>_rep<N>.mp4
+MOTION_CALIBRATION_VIDEOS_DIR = "data_new0731/motion_calibration_videos"
 MOTION_FRAMES = 30          # ~1초 (30fps 기준) 동안의 프레임 수
 MOTION_REPS = 3             # 심볼당 반복 녹화 횟수 (Wobbrock et al. 2007: DTW는 템플릿 3개면 9개 대비 99.5% 정확도)
 CAPTURE_FPS_DELAY = 33      # ms
+_VIDEO_FPS = round(1000 / CAPTURE_FPS_DELAY)
 
 _GREEN_BRIGHT = (80, 255, 120)
 _GREEN_MID = (90, 230, 110)
@@ -125,6 +128,7 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
     state = "waiting"   # waiting -> recording -> waiting
     rep_buffer: list[np.ndarray] = []
     raw_rep_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표(프레임별)
+    frame_rep_buffer: list[np.ndarray] = []   # 캡처 화면 원본(비디오 저장용)
     space_held = False
 
     print(f"\n모션 보정 시작 — {len(MOTION_LETTERS)}개 심볼 "
@@ -148,16 +152,22 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
             if landmarks_list:
                 rep_buffer.append(extract_tip_frame(landmarks_list[0], MOTION_TIP[letter]))
                 raw_rep_buffer.append(landmarks_list[0].copy())
+                frame_rep_buffer.append(frame.copy())
             if len(rep_buffer) >= MOTION_FRAMES:
                 reps = motion_data.setdefault(letter, [])
                 reps.append(np.stack(rep_buffer))
                 raw_reps = motion_landmarks.setdefault(letter, [])
                 raw_reps.append(np.stack(raw_rep_buffer))
-                print(f"  [{letter}] {len(reps)}/{MOTION_REPS} 회 녹화 완료")
+                rep_num = len(reps)
+                save_video_clip(frame_rep_buffer,
+                                 os.path.join(MOTION_CALIBRATION_VIDEOS_DIR, f"{letter}_rep{rep_num}.mp4"),
+                                 _VIDEO_FPS)
+                print(f"  [{letter}] {rep_num}/{MOTION_REPS} 회 녹화 완료")
                 rep_buffer = []
                 raw_rep_buffer = []
+                frame_rep_buffer = []
                 state = "waiting"
-                if len(reps) >= MOTION_REPS:
+                if rep_num >= MOTION_REPS:
                     letter_index += 1
 
         # --- HUD ---
@@ -204,12 +214,14 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
                 state = "recording"
                 rep_buffer = []
                 raw_rep_buffer = []
+                frame_rep_buffer = []
         elif key == ord("s"):
             print(f"  [{letter}] 건너뜀 (현재까지 {rep_count}회 저장됨)")
             letter_index += 1
             state = "waiting"
             rep_buffer = []
             raw_rep_buffer = []
+            frame_rep_buffer = []
         elif key == ord("q"):
             print("모션 보정 중단 — 현재까지 수집된 데이터로 저장합니다.")
             break

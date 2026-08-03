@@ -16,7 +16,7 @@ import time
 import cv2
 import numpy as np
 
-from features import extract, extract_tip_frame
+from features import extract, extract_tip_frame, save_video_clip
 from sign_classifier import classify, classify_calibrated
 from motion_classifier import (classify_motion, MOTION_TIP, MOTION_TRIGGER_LETTER,
                                MOTION_MIN_FRAMES, MOTION_STOP_VEL, MOTION_STOP_COUNT)
@@ -37,8 +37,11 @@ _MODEL_SHORT_NAMES = {
 TEST_SEQUENCE = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + list("0123456789")
 MOTION_SYMBOLS = {"J", "Z"}
 RESULTS_PATH = "data_new0731/test_results.json"
+# 시도별 캡처 화면 원본 — 정적은 스냅샷(.jpg), 모션은 클립(.mp4)으로 세션별 폴더에 저장
+TEST_MEDIA_DIR = "data_new0731/test_media"
 FEEDBACK_DISPLAY_SEC = 1.0
 CAPTURE_FPS_DELAY = 33   # ms
+_VIDEO_FPS = round(1000 / CAPTURE_FPS_DELAY)
 
 # macOS / Windows / Linux 방향키 코드 (waitKeyEx 기준) — 진행자가 skip/back을 조작할 때 사용
 _LEFT_KEYS = {63234, 2424832, 65361}
@@ -639,10 +642,14 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
     # 최종 결과 기준 정확도와 별개로 "최초 시도 기준" 정확도도 나중에 계산 가능하게
     discarded_results: dict[str, list[dict]] = {}
 
+    # 이번 세션의 캡처 화면 원본을 모아둘 폴더 (참가자명 + 세션 시작 시각)
+    media_dir = os.path.join(TEST_MEDIA_DIR, f"{participant or 'unnamed'}_{time.strftime('%Y%m%dT%H%M%S')}")
+
     idx = 0
     state = "waiting"   # waiting -> recording(모션만) -> feedback -> waiting
     motion_buffer: list[np.ndarray] = []
     motion_landmarks_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표(프레임별)
+    motion_frame_buffer: list[np.ndarray] = []   # 캡처 화면 원본(비디오 저장용)
     motion_tip_prev = None
     motion_slow_count = 0
     last_predicted = "?"
@@ -678,6 +685,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 tip_pos = (lm_motion[tip_idx, :2] - wrist) / hand_scale
                 motion_buffer.append(extract_tip_frame(lm_motion, tip_idx))
                 motion_landmarks_buffer.append(lm_motion.copy())
+                motion_frame_buffer.append(frame.copy())
                 # 조기 종료 판정
                 cur_vel = float(np.linalg.norm(tip_pos - motion_tip_prev)) if motion_tip_prev is not None else 1.0
                 if len(motion_buffer) >= MOTION_MIN_FRAMES:
@@ -687,9 +695,12 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             if done and motion_buffer:
                 window = np.stack(motion_buffer)
                 raw_landmarks_window = np.stack(motion_landmarks_buffer)
+                video_path = os.path.join(media_dir, f"{target}.mp4")
+                save_video_clip(motion_frame_buffer, video_path, _VIDEO_FPS)
                 predicted, _dist = classify_motion(window, motion_cal_data or {})
                 motion_buffer = []
                 motion_landmarks_buffer = []
+                motion_frame_buffer = []
                 motion_tip_prev = None
                 motion_slow_count = 0
                 last_predicted = predicted
@@ -703,6 +714,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                     "models": last_model_results,
                     "raw_window": window.tolist(),
                     "raw_landmarks_window": raw_landmarks_window.tolist(),
+                    "video_path": video_path,
                 }
                 print(f"  [{target}] -> {predicted}  {'OK' if last_correct else 'X'}")
                 state = "feedback"
@@ -793,6 +805,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                         state = "recording"
                         motion_buffer = []
                         motion_landmarks_buffer = []
+                        motion_frame_buffer = []
                         motion_tip_prev = None
                         motion_slow_count = 0
             elif landmarks_list:
@@ -814,6 +827,9 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 predicted = model_preds.get("kNN (custom)", model_preds.get("Rule-based", "?"))
                 last_predicted = predicted
                 last_correct = (predicted == target)
+                frame_path = os.path.join(media_dir, f"{target}.jpg")
+                os.makedirs(media_dir, exist_ok=True)
+                cv2.imwrite(frame_path, frame)
                 if target in session_results:
                     discarded_results.setdefault(target, []).append(session_results[target])
                 session_results[target] = {
@@ -822,6 +838,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                     "raw_landmarks": lm.tolist(),
                     "correct": last_correct,
                     "models": last_model_results,
+                    "frame_path": frame_path,
                 }
                 summary = "  ".join(f"{n}:{p}{'OK' if p == target else 'X'}" for n, p in model_preds.items())
                 print(f"  [{target}] -> {summary or '?'}")
@@ -833,6 +850,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             state = "waiting"
             motion_buffer = []
             motion_landmarks_buffer = []
+            motion_frame_buffer = []
         elif (key == ord("b") or key_raw in _LEFT_KEYS) and idx > 0:
             # 스킵과 동일하게 제한 없이 되돌아감(연속으로 누르면 여러 단계 이동) —
             # 진행자가 화살표 키로 조작(스플릿 키보드에서 참가자는 SPACE만 사용)
@@ -840,6 +858,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             state = "waiting"
             motion_buffer = []
             motion_landmarks_buffer = []
+            motion_frame_buffer = []
             print(f"  [{sequence[idx]}] 다시 시도")
         elif key == ord("q"):
             print("테스트 중단 — 현재까지 결과를 저장합니다.")

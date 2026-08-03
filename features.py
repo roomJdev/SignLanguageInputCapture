@@ -4,6 +4,9 @@
 카메라 각도가 달라져도 이 값들은 거의 변하지 않는다.
 """
 
+import os
+
+import cv2
 import numpy as np
 
 WRIST = 0
@@ -79,3 +82,19 @@ def extract_tip_frame(lm: np.ndarray, tip_idx: int) -> np.ndarray:
     scale = np.linalg.norm(lm[MIDDLE_MCP][:2] - wrist) + 1e-8
     rel = (pts[tip_idx] - wrist) / scale   # (2,)
     return rel.astype(np.float32)
+
+
+def save_video_clip(frames: list[np.ndarray], path: str, fps: int = 30) -> None:
+    """캡처 중 모은 원본 BGR 프레임들을 mp4 비디오로 저장.
+
+    랜드마크/feature 추출 이전의 실제 화면을 남겨, 나중에 다른 손 인식 모델이나
+    설정으로 재분석하거나 캡처 상황을 육안으로 재확인할 수 있게 한다.
+    """
+    if not frames:
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    h, w = frames[0].shape[:2]
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    for f in frames:
+        writer.write(f)
+    writer.release()
