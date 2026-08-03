@@ -89,10 +89,12 @@ python main.py
 
 ```
 data_new0731/
-├── cal_<이름>.npy / .json               # 보정 데이터 (프로필명으로 저장, .json은 사람이 읽을 수 있는 사본)
-├── motion_cal_<이름>.npy / .json        # J/Z 모션 보정 데이터
+├── cal_<이름>.npy / .json                        # 보정 데이터 (프로필명으로 저장, .json은 사람이 읽을 수 있는 사본)
+├── cal_<이름>_landmarks.npy / .json              # 위 보정 데이터의 가공 전 원본 21관절 좌표
+├── motion_cal_<이름>.npy / .json                 # J/Z 모션 보정 데이터
+├── motion_cal_<이름>_landmarks.npy / .json       # 위 모션 데이터의 가공 전 원본 21관절 좌표(프레임별)
 ├── calibration_profiles.json
-└── test_results.json                     # 테스트 결과 (raw_vector/raw_window, discarded_attempts 포함)
+└── test_results.json    # 테스트 결과 (raw_vector/raw_window + raw_landmarks/raw_landmarks_window, discarded_attempts 포함)
 ```
 
 ```bash

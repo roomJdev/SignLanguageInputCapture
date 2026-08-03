@@ -10,6 +10,9 @@ from features import extract
 # J, Z는 모션 필요로 제외
 LETTERS = list("ABCDEFGHIKLMNOPQRSTUVWXY") + list("0123456789")
 CALIBRATION_PATH = "data_new0731/calibration_data.npy"
+# MediaPipe 원본 21관절 좌표(정규화된 x,y,z) — feature vector로 가공되기 전 데이터.
+# 나중에 feature 설계 자체가 바뀌어도 처음부터 다시 계산할 수 있도록 별도 보존.
+CALIBRATION_LANDMARKS_PATH = "data_new0731/calibration_landmarks.npy"
 SAMPLES_PER_LETTER = 30
 CAPTURE_FPS_DELAY = 33   # ms
 
@@ -24,6 +27,14 @@ _REF_DISPLAY_HEIGHT = 360   # 화면에 표시할 레퍼런스 이미지 높이(
 def load_calibration() -> dict | None:
     if os.path.exists(CALIBRATION_PATH):
         data = np.load(CALIBRATION_PATH, allow_pickle=True).item()
+        data.pop("SPACE", None)
+        return data
+    return None
+
+
+def load_calibration_landmarks() -> dict | None:
+    if os.path.exists(CALIBRATION_LANDMARKS_PATH):
+        data = np.load(CALIBRATION_LANDMARKS_PATH, allow_pickle=True).item()
         data.pop("SPACE", None)
         return data
     return None
@@ -76,8 +87,10 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
         raise RuntimeError(f"카메라 [{camera_index}]를 열 수 없습니다.")
 
     calibration_data: dict = load_calibration() or {}
+    calibration_landmarks: dict = load_calibration_landmarks() or {}
     state = "waiting"
     buffer: list[np.ndarray] = []
+    raw_buffer: list[np.ndarray] = []
     space_held = False
     status_msg = "Open your hand flat, then press SPACE to capture"
 
@@ -95,8 +108,10 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
         if state == "capturing":
             if landmarks_list:
                 buffer.append(extract(landmarks_list[0]))
+                raw_buffer.append(landmarks_list[0].copy())
             if len(buffer) >= SAMPLES_PER_LETTER:
                 calibration_data["SPACE"] = np.stack(buffer)
+                calibration_landmarks["SPACE"] = np.stack(raw_buffer)
                 print(f"  [SPACE] 보정 완료 ({len(buffer)} 샘플)")
                 state = "done"
 
@@ -138,6 +153,7 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
             if landmarks_list:
                 state = "capturing"
                 buffer = []
+                raw_buffer = []
             else:
                 status_msg = "Warning: no hand detected."
         elif key == ord("q"):
@@ -150,6 +166,7 @@ def run_space_calibration(detector, camera_index: int = 0) -> dict | None:
 
     if "SPACE" in calibration_data:
         save_calibration(calibration_data)
+        save_calibration_landmarks(calibration_landmarks)
     return calibration_data if "SPACE" in calibration_data else None
 
 
@@ -160,6 +177,15 @@ def save_calibration(data: dict) -> None:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({k: v.tolist() for k, v in data.items()}, f, indent=2)
     print(f"보정 데이터 저장 완료: {CALIBRATION_PATH} (+ {json_path})")
+
+
+def save_calibration_landmarks(data: dict) -> None:
+    os.makedirs(os.path.dirname(CALIBRATION_LANDMARKS_PATH), exist_ok=True)
+    np.save(CALIBRATION_LANDMARKS_PATH, data)
+    json_path = os.path.splitext(CALIBRATION_LANDMARKS_PATH)[0] + ".json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({k: v.tolist() for k, v in data.items()}, f, indent=2)
+    print(f"원본 랜드마크 저장 완료: {CALIBRATION_LANDMARKS_PATH} (+ {json_path})")
 
 
 def run_calibration(detector, camera_index: int = 0) -> dict:
@@ -177,9 +203,11 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
 
     # 기존 데이터를 베이스로 시작 — 새로 캡처한 것만 덮어씀
     calibration_data: dict[str, np.ndarray] = load_calibration() or {}
+    calibration_landmarks: dict[str, np.ndarray] = load_calibration_landmarks() or {}
     letter_index = 0
     state = "waiting"
     buffer: list[np.ndarray] = []
+    raw_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표
     status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
     space_held = False   # 스페이스바 연타/홀드 시 캡처 완료 직후 재트리거 방지용 엣지 감지
 
@@ -200,10 +228,13 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
         if state == "capturing":
             if landmarks_list:
                 buffer.append(extract(landmarks_list[0]))
+                raw_buffer.append(landmarks_list[0].copy())
             if len(buffer) >= SAMPLES_PER_LETTER:
                 calibration_data[letter] = np.stack(buffer)   # (30, 25)
+                calibration_landmarks[letter] = np.stack(raw_buffer)   # (30, 21, 3)
                 print(f"  [{letter}] 보정 완료 ({len(buffer)} 샘플)")
                 buffer = []
+                raw_buffer = []
                 letter_index += 1
                 state = "waiting"
                 status_msg = "SPACE: start capture  /  S: skip  /  B: back  /  Q: save & quit"
@@ -266,6 +297,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
             if landmarks_list:
                 state = "capturing"
                 buffer = []
+                raw_buffer = []
             else:
                 status_msg = "Warning: no hand detected. Place your hand in front of the camera."
         elif key == ord("s") or key_raw in _RIGHT_KEYS:
@@ -273,12 +305,14 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
             letter_index += 1
             state = "waiting"
             buffer = []
+            raw_buffer = []
             status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
         elif (key == ord("b") or key_raw in _LEFT_KEYS) and letter_index > 0:
             # 스킵과 동일하게 제한 없이 되돌아감 — 진행자가 화살표 키로 조작
             letter_index -= 1
             state = "waiting"
             buffer = []
+            raw_buffer = []
             print(f"  [{LETTERS[letter_index]}] 다시 캡처")
             status_msg = "SPACE: start capture  /  S/->: skip  /  B/<-: back  /  Q: save & quit"
         elif key == ord("q"):
@@ -293,6 +327,7 @@ def run_calibration(detector, camera_index: int = 0) -> dict:
 
     if calibration_data:
         save_calibration(calibration_data)
+        save_calibration_landmarks(calibration_landmarks)
         print(f"\n보정된 심볼: {sorted(calibration_data.keys())}")
     else:
         print("보정 데이터 없음.")

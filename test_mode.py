@@ -642,6 +642,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
     idx = 0
     state = "waiting"   # waiting -> recording(모션만) -> feedback -> waiting
     motion_buffer: list[np.ndarray] = []
+    motion_landmarks_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표(프레임별)
     motion_tip_prev = None
     motion_slow_count = 0
     last_predicted = "?"
@@ -676,6 +677,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 hand_scale = float(np.linalg.norm(lm_motion[9, :2] - wrist)) + 1e-8
                 tip_pos = (lm_motion[tip_idx, :2] - wrist) / hand_scale
                 motion_buffer.append(extract_tip_frame(lm_motion, tip_idx))
+                motion_landmarks_buffer.append(lm_motion.copy())
                 # 조기 종료 판정
                 cur_vel = float(np.linalg.norm(tip_pos - motion_tip_prev)) if motion_tip_prev is not None else 1.0
                 if len(motion_buffer) >= MOTION_MIN_FRAMES:
@@ -684,8 +686,10 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             done = (motion_slow_count >= MOTION_STOP_COUNT or len(motion_buffer) >= MOTION_FRAMES)
             if done and motion_buffer:
                 window = np.stack(motion_buffer)
+                raw_landmarks_window = np.stack(motion_landmarks_buffer)
                 predicted, _dist = classify_motion(window, motion_cal_data or {})
                 motion_buffer = []
+                motion_landmarks_buffer = []
                 motion_tip_prev = None
                 motion_slow_count = 0
                 last_predicted = predicted
@@ -698,6 +702,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                     "correct": last_correct,
                     "models": last_model_results,
                     "raw_window": window.tolist(),
+                    "raw_landmarks_window": raw_landmarks_window.tolist(),
                 }
                 print(f"  [{target}] -> {predicted}  {'OK' if last_correct else 'X'}")
                 state = "feedback"
@@ -787,6 +792,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                     else:
                         state = "recording"
                         motion_buffer = []
+                        motion_landmarks_buffer = []
                         motion_tip_prev = None
                         motion_slow_count = 0
             elif landmarks_list:
@@ -813,6 +819,7 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
                 session_results[target] = {
                     "predicted": predicted,
                     "raw_vector": raw_vector,
+                    "raw_landmarks": lm.tolist(),
                     "correct": last_correct,
                     "models": last_model_results,
                 }
@@ -825,12 +832,14 @@ def run_test_mode(detector, cal_data: dict | None, motion_cal_data: dict | None,
             idx += 1
             state = "waiting"
             motion_buffer = []
+            motion_landmarks_buffer = []
         elif (key == ord("b") or key_raw in _LEFT_KEYS) and idx > 0:
             # 스킵과 동일하게 제한 없이 되돌아감(연속으로 누르면 여러 단계 이동) —
             # 진행자가 화살표 키로 조작(스플릿 키보드에서 참가자는 SPACE만 사용)
             idx -= 1
             state = "waiting"
             motion_buffer = []
+            motion_landmarks_buffer = []
             print(f"  [{sequence[idx]}] 다시 시도")
         elif key == ord("q"):
             print("테스트 중단 — 현재까지 결과를 저장합니다.")

@@ -31,6 +31,8 @@ def _migrate_10d_to_2d(data: dict) -> dict:
 
 MOTION_LETTERS = ["J", "Z"]
 MOTION_CALIBRATION_PATH = "data_new0731/motion_calibration_data.npy"
+# MediaPipe 원본 21관절 궤적(프레임별) — DTW 비교용 손끝 2차원 궤적으로 가공되기 전 데이터
+MOTION_CALIBRATION_LANDMARKS_PATH = "data_new0731/motion_calibration_landmarks.npy"
 MOTION_FRAMES = 30          # ~1초 (30fps 기준) 동안의 프레임 수
 MOTION_REPS = 3             # 심볼당 반복 녹화 횟수 (Wobbrock et al. 2007: DTW는 템플릿 3개면 9개 대비 99.5% 정확도)
 CAPTURE_FPS_DELAY = 33      # ms
@@ -94,6 +96,15 @@ def save_motion_calibration(data: dict) -> None:
     print(f"모션 보정 데이터 저장 완료: {MOTION_CALIBRATION_PATH} (+ {json_path})")
 
 
+def save_motion_calibration_landmarks(data: dict) -> None:
+    os.makedirs(os.path.dirname(MOTION_CALIBRATION_LANDMARKS_PATH), exist_ok=True)
+    np.save(MOTION_CALIBRATION_LANDMARKS_PATH, data)
+    json_path = os.path.splitext(MOTION_CALIBRATION_LANDMARKS_PATH)[0] + ".json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({k: [rep.tolist() for rep in reps] for k, reps in data.items()}, f, indent=2)
+    print(f"모션 원본 랜드마크 저장 완료: {MOTION_CALIBRATION_LANDMARKS_PATH} (+ {json_path})")
+
+
 def run_motion_calibration(detector, camera_index: int = 0) -> dict:
     """J, Z 동작 보정 세션 실행. 완료된 데이터 dict 반환.
 
@@ -108,10 +119,12 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
     # (예전엔 load_motion_calibration()으로 기존 데이터를 이어받아서, 여러 사람이
     #  캘리브레이션할수록 J/Z 템플릿이 끝없이 누적되는 문제가 있었음)
     motion_data: dict[str, list[np.ndarray]] = {}
+    motion_landmarks: dict[str, list[np.ndarray]] = {}
     reference_images = _load_reference_images()
     letter_index = 0
     state = "waiting"   # waiting -> recording -> waiting
     rep_buffer: list[np.ndarray] = []
+    raw_rep_buffer: list[np.ndarray] = []   # feature 가공 전 21관절 원본 좌표(프레임별)
     space_held = False
 
     print(f"\n모션 보정 시작 — {len(MOTION_LETTERS)}개 심볼 "
@@ -134,11 +147,15 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
         if state == "recording":
             if landmarks_list:
                 rep_buffer.append(extract_tip_frame(landmarks_list[0], MOTION_TIP[letter]))
+                raw_rep_buffer.append(landmarks_list[0].copy())
             if len(rep_buffer) >= MOTION_FRAMES:
                 reps = motion_data.setdefault(letter, [])
                 reps.append(np.stack(rep_buffer))
+                raw_reps = motion_landmarks.setdefault(letter, [])
+                raw_reps.append(np.stack(raw_rep_buffer))
                 print(f"  [{letter}] {len(reps)}/{MOTION_REPS} 회 녹화 완료")
                 rep_buffer = []
+                raw_rep_buffer = []
                 state = "waiting"
                 if len(reps) >= MOTION_REPS:
                     letter_index += 1
@@ -186,11 +203,13 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
             if landmarks_list:
                 state = "recording"
                 rep_buffer = []
+                raw_rep_buffer = []
         elif key == ord("s"):
             print(f"  [{letter}] 건너뜀 (현재까지 {rep_count}회 저장됨)")
             letter_index += 1
             state = "waiting"
             rep_buffer = []
+            raw_rep_buffer = []
         elif key == ord("q"):
             print("모션 보정 중단 — 현재까지 수집된 데이터로 저장합니다.")
             break
@@ -203,6 +222,7 @@ def run_motion_calibration(detector, camera_index: int = 0) -> dict:
 
     if motion_data:
         save_motion_calibration(motion_data)
+        save_motion_calibration_landmarks(motion_landmarks)
         print(f"\n모션 보정된 심볼: {sorted(motion_data.keys())}")
     else:
         print("모션 보정 데이터 없음.")
