@@ -12,15 +12,15 @@ import time
 
 import numpy as np
 
-PROFILES_PATH = "data_new0731/calibration_profiles.json"
-DEFAULT_STATIC_PATH = "data_new0731/calibration_data.npy"
-DEFAULT_MOTION_PATH = "data_new0731/motion_calibration_data.npy"
+PROFILES_PATH = "data_new0803/calibration_profiles.json"
+DEFAULT_STATIC_PATH = "data_new0803/calibration_data.npy"
+DEFAULT_MOTION_PATH = "data_new0803/motion_calibration_data.npy"
 # 가공 전 원본 21관절 랜드마크 (calibration.py / motion_calibration.py가 생성)
-DEFAULT_STATIC_LANDMARKS_PATH = "data_new0731/calibration_landmarks.npy"
-DEFAULT_MOTION_LANDMARKS_PATH = "data_new0731/motion_calibration_landmarks.npy"
+DEFAULT_STATIC_LANDMARKS_PATH = "data_new0803/calibration_landmarks.npy"
+DEFAULT_MOTION_LANDMARKS_PATH = "data_new0803/motion_calibration_landmarks.npy"
 # 심볼별/반복별 캡처 화면 원본 비디오가 모이는 폴더
-DEFAULT_STATIC_VIDEOS_DIR = "data_new0731/calibration_videos"
-DEFAULT_MOTION_VIDEOS_DIR = "data_new0731/motion_calibration_videos"
+DEFAULT_STATIC_VIDEOS_DIR = "data_new0803/calibration_videos"
+DEFAULT_MOTION_VIDEOS_DIR = "data_new0803/motion_calibration_videos"
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +63,8 @@ def copy_default_as_profile(name: str) -> bool:
         return False
 
     slug = safe.replace(" ", "_")
-    static_dst = f"data_new0731/cal_{slug}.npy"
-    motion_dst = f"data_new0731/motion_cal_{slug}.npy" if os.path.exists(DEFAULT_MOTION_PATH) else None
+    static_dst = f"data_new0803/cal_{slug}.npy"
+    motion_dst = f"data_new0803/motion_cal_{slug}.npy" if os.path.exists(DEFAULT_MOTION_PATH) else None
 
     os.makedirs(os.path.dirname(static_dst), exist_ok=True)
     shutil.copy2(DEFAULT_STATIC_PATH, static_dst)
@@ -82,13 +82,13 @@ def copy_default_as_profile(name: str) -> bool:
 
     # 가공 전 원본 21관절 랜드마크(.npy + .json)도 있으면 함께 복사
     if os.path.exists(DEFAULT_STATIC_LANDMARKS_PATH):
-        static_landmarks_dst = f"data_new0731/cal_{slug}_landmarks.npy"
+        static_landmarks_dst = f"data_new0803/cal_{slug}_landmarks.npy"
         shutil.copy2(DEFAULT_STATIC_LANDMARKS_PATH, static_landmarks_dst)
         default_static_landmarks_json = os.path.splitext(DEFAULT_STATIC_LANDMARKS_PATH)[0] + ".json"
         if os.path.exists(default_static_landmarks_json):
             shutil.copy2(default_static_landmarks_json, os.path.splitext(static_landmarks_dst)[0] + ".json")
     if motion_dst and os.path.exists(DEFAULT_MOTION_LANDMARKS_PATH):
-        motion_landmarks_dst = f"data_new0731/motion_cal_{slug}_landmarks.npy"
+        motion_landmarks_dst = f"data_new0803/motion_cal_{slug}_landmarks.npy"
         shutil.copy2(DEFAULT_MOTION_LANDMARKS_PATH, motion_landmarks_dst)
         default_motion_landmarks_json = os.path.splitext(DEFAULT_MOTION_LANDMARKS_PATH)[0] + ".json"
         if os.path.exists(default_motion_landmarks_json):
@@ -96,9 +96,9 @@ def copy_default_as_profile(name: str) -> bool:
 
     # 캡처 화면 원본 비디오 폴더도 있으면 통째로 복사
     if os.path.isdir(DEFAULT_STATIC_VIDEOS_DIR):
-        shutil.copytree(DEFAULT_STATIC_VIDEOS_DIR, f"data_new0731/cal_{slug}_videos", dirs_exist_ok=True)
+        shutil.copytree(DEFAULT_STATIC_VIDEOS_DIR, f"data_new0803/cal_{slug}_videos", dirs_exist_ok=True)
     if motion_dst and os.path.isdir(DEFAULT_MOTION_VIDEOS_DIR):
-        shutil.copytree(DEFAULT_MOTION_VIDEOS_DIR, f"data_new0731/motion_cal_{slug}_videos", dirs_exist_ok=True)
+        shutil.copytree(DEFAULT_MOTION_VIDEOS_DIR, f"data_new0803/motion_cal_{slug}_videos", dirs_exist_ok=True)
 
     profiles = [p for p in _load_index() if p["name"] != safe]
     profiles.append({

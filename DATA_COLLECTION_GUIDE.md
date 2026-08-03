@@ -50,7 +50,7 @@ python main.py
 - J, Z는 정적 보정 완료 후 모션 보정이 이어집니다 (각 3회 반복)
 - 스페이스바를 잘못 누르는 등 다시 하고 싶으면 `B`(또는 ←)로 이전 심볼로 되돌아가 재시도할 수 있습니다. `S`(또는 →)는 건너뛰기입니다
 - 보정 완료 후 프로필 이름 저장 시 **영문 이름 소문자** 사용
-  - 예: `gildong` → `data_new0731/cal_gildong.npy`, `data_new0731/motion_cal_gildong.npy` 생성
+  - 예: `gildong` → `data_new0803/cal_gildong.npy`, `data_new0803/motion_cal_gildong.npy` 생성
 
 > **주의**: 보정을 건너뛰면 인식률이 현저히 낮게 측정되어 데이터로 사용할 수 없습니다.
 
@@ -77,7 +77,7 @@ python main.py
 2. 참여자 이름 입력 (영문 소문자, 보정 프로필명과 동일하게)
 3. 확인 화면에서 Enter 또는 y 입력 후 시작
 4. 화면에 표시되는 심볼을 수화로 표현하면 자동으로 다음으로 넘어갑니다 — SPACE로 잘못 눌렀다면 `B`(또는 ←)로 되돌아가 다시 시도할 수 있습니다 (`S`/→는 건너뛰기)
-5. 세션이 끝나면 결과가 자동으로 `data_new0731/test_results.json`에 저장됩니다
+5. 세션이 끝나면 결과가 자동으로 `data_new0803/test_results.json`에 저장됩니다
 
 **권장**: Test (Ordered)와 Test (Random) **두 모드 모두 1회씩** 실행해주세요.
 
@@ -85,10 +85,10 @@ python main.py
 
 ## 4. 결과 파일 전달
 
-테스트 완료 후 `data_new0731/` 폴더 전체를 압축해서 전달해주세요.
+테스트 완료 후 `data_new0803/` 폴더 전체를 압축해서 전달해주세요.
 
 ```
-data_new0731/
+data_new0803/
 ├── cal_<이름>.npy / .json                        # 보정 데이터 (프로필명으로 저장, .json은 사람이 읽을 수 있는 사본)
 ├── cal_<이름>_landmarks.npy / .json              # 위 보정 데이터의 가공 전 원본 21관절 좌표
 ├── cal_<이름>_videos/<symbol>.mp4                # 심볼별 캡처 화면 원본(약 1초)
@@ -102,7 +102,7 @@ data_new0731/
 
 ```bash
 # 프로젝트 루트에서 실행 — 파일명은 본인 영문 이름으로
-zip -r data_gildong.zip data_new0731/
+zip -r data_gildong.zip data_new0803/
 ```
 
 압축 파일과 함께 아래 **실험 조건 CSV**도 작성해서 보내주세요.
@@ -139,7 +139,7 @@ python main.py --camera 1    # 다른 카메라 인덱스 시도
 
 **보정 데이터가 없다고 나오는 경우**
 - 런처에서 Calibrate를 먼저 실행하고, 보정 완료 후 프로필 이름을 저장했는지 확인하세요
-- `data_new0731/` 폴더에 `cal_<이름>.npy` 파일이 생성되어 있어야 합니다
+- `data_new0803/` 폴더에 `cal_<이름>.npy` 파일이 생성되어 있어야 합니다
 
 **테스트 세션 초기화가 필요한 경우**
 ```bash

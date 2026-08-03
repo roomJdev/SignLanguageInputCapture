@@ -280,7 +280,7 @@ SignLanguageInputCapture/
 ├── keystroke_injector.py      # OS-level 키스트로크 주입 (pyautogui), 안정화 로직
 ├── test_mode.py               # 테스트 모드, 다중 모델 비교, 세션 저장/통계/관리 UI
 ├── requirements.txt
-├── data_new0731/               # 보정 데이터 및 세션 기록 (gitignore) — 2026-07-31 누적 버그(아래 참고) 수정 이후 저장 경로
+├── data_new0803/               # 보정 데이터 및 세션 기록 (gitignore) — 2026-08-03부터 저장 경로
 │   ├── calibration_data.npy / .json     # 25차원 feature vector. .npy(로딩용) + .json(사람이 읽을 수 있는 사본) 쌍으로 저장
 │   ├── calibration_landmarks.npy / .json    # feature 가공 전 원본 21관절(x,y,z) 좌표 — feature 설계가 바뀌어도 재계산 가능하게 별도 보존
 │   ├── calibration_videos/<symbol>.mp4      # 심볼별 캡처 화면 원본(약 1초, 30프레임)
@@ -292,6 +292,7 @@ SignLanguageInputCapture/
 │   ├── calibration_profiles.json
 │   ├── test_media/<참가자>_<세션시각>/<symbol>.jpg(정적) 또는 .mp4(모션)   # 테스트 시도별 캡처 화면 원본
 │   └── test_results.json      # 세션마다 raw_vector/raw_window(가공된 feature) + raw_landmarks/raw_landmarks_window(원본 21관절) + frame_path/video_path + discarded_attempts 포함
+├── data_new0731/               # 2026-07-31~08-03 사이 수집 데이터 (원본 랜드마크/비디오 저장 이전) — 더 이상 쓰지 않음, 참고용으로만 보존
 ├── data/                       # 구버전(누적 버그 존재) 데이터 — 더 이상 쓰지 않음, 참고용으로만 보존
 └── resources/
     ├── hand_landmarker.task        # MediaPipe 모델

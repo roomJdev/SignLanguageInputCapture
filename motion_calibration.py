@@ -30,11 +30,11 @@ def _migrate_10d_to_2d(data: dict) -> dict:
     return migrated
 
 MOTION_LETTERS = ["J", "Z"]
-MOTION_CALIBRATION_PATH = "data_new0731/motion_calibration_data.npy"
+MOTION_CALIBRATION_PATH = "data_new0803/motion_calibration_data.npy"
 # MediaPipe 원본 21관절 궤적(프레임별) — DTW 비교용 손끝 2차원 궤적으로 가공되기 전 데이터
-MOTION_CALIBRATION_LANDMARKS_PATH = "data_new0731/motion_calibration_landmarks.npy"
+MOTION_CALIBRATION_LANDMARKS_PATH = "data_new0803/motion_calibration_landmarks.npy"
 # 반복별 캡처 화면 원본(비디오) — <심볼>_rep<N>.mp4
-MOTION_CALIBRATION_VIDEOS_DIR = "data_new0731/motion_calibration_videos"
+MOTION_CALIBRATION_VIDEOS_DIR = "data_new0803/motion_calibration_videos"
 MOTION_FRAMES = 30          # ~1초 (30fps 기준) 동안의 프레임 수
 MOTION_REPS = 3             # 심볼당 반복 녹화 횟수 (Wobbrock et al. 2007: DTW는 템플릿 3개면 9개 대비 99.5% 정확도)
 CAPTURE_FPS_DELAY = 33      # ms

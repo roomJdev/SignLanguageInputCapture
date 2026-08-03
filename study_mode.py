@@ -57,7 +57,7 @@ SCHEDULE_LLM_FIRST = _block("llm") + _block("ed")
 # 참가자 목록/세션 매니저에서 트라이얼 개수(len) 참조용 — 두 스케줄 길이는 동일
 STUDY_SCHEDULE = SCHEDULE_ED_FIRST
 
-RESULTS_PATH = "data_new0731/study_results.json"
+RESULTS_PATH = "data_new0803/study_results.json"
 
 
 def next_schedule() -> tuple[list[dict], str]:

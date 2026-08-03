@@ -36,9 +36,9 @@ _MODEL_SHORT_NAMES = {
 
 TEST_SEQUENCE = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + list("0123456789")
 MOTION_SYMBOLS = {"J", "Z"}
-RESULTS_PATH = "data_new0731/test_results.json"
+RESULTS_PATH = "data_new0803/test_results.json"
 # 시도별 캡처 화면 원본 — 정적은 스냅샷(.jpg), 모션은 클립(.mp4)으로 세션별 폴더에 저장
-TEST_MEDIA_DIR = "data_new0731/test_media"
+TEST_MEDIA_DIR = "data_new0803/test_media"
 FEEDBACK_DISPLAY_SEC = 1.0
 CAPTURE_FPS_DELAY = 33   # ms
 _VIDEO_FPS = round(1000 / CAPTURE_FPS_DELAY)

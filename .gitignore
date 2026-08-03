@@ -15,6 +15,7 @@ build/
 # 보정 데이터 (개인 데이터)
 data/
 data_new0731/
+data_new0803/
 
 # IDE
 .idea/

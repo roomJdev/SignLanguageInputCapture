@@ -9,12 +9,12 @@ from features import extract, save_video_clip
 
 # J, Z는 모션 필요로 제외
 LETTERS = list("ABCDEFGHIKLMNOPQRSTUVWXY") + list("0123456789")
-CALIBRATION_PATH = "data_new0731/calibration_data.npy"
+CALIBRATION_PATH = "data_new0803/calibration_data.npy"
 # MediaPipe 원본 21관절 좌표(정규화된 x,y,z) — feature vector로 가공되기 전 데이터.
 # 나중에 feature 설계 자체가 바뀌어도 처음부터 다시 계산할 수 있도록 별도 보존.
-CALIBRATION_LANDMARKS_PATH = "data_new0731/calibration_landmarks.npy"
+CALIBRATION_LANDMARKS_PATH = "data_new0803/calibration_landmarks.npy"
 # 심볼별 캡처 화면 원본(비디오) — 심볼당 1개 파일로 덮어써 저장
-CALIBRATION_VIDEOS_DIR = "data_new0731/calibration_videos"
+CALIBRATION_VIDEOS_DIR = "data_new0803/calibration_videos"
 SAMPLES_PER_LETTER = 30
 CAPTURE_FPS_DELAY = 33   # ms
 _VIDEO_FPS = round(1000 / CAPTURE_FPS_DELAY)
