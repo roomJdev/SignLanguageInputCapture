@@ -94,3 +94,49 @@ class ModelManager:
             except Exception:
                 results[name] = "?"
         return results
+
+
+class SVMClassifier:
+    """실시간 인식(main.py)에 쓰는 SVM 단일 분류기.
+
+    2026-08-05 파일럿 5명 비교 결과(kNN(custom) 75.9% / SVM 82.9%, 나머지 모델은 그 사이)에
+    따라 SVM을 라이브 인식의 기본 분류기로 채택. letters/digits 서브셋별로 별도 학습한다.
+    """
+
+    def __init__(self):
+        self._fitted: dict[str, "SVC"] = {}
+
+    def fit(self, cal_data: dict | None) -> None:
+        self._fitted = {}
+        if not cal_data or not _SKLEARN_AVAILABLE:
+            return
+
+        subsets = {
+            "letters": {k: v for k, v in cal_data.items() if not k.isdigit()},
+            "digits": {k: v for k, v in cal_data.items() if k.isdigit()},
+        }
+        for subset_name, subset in subsets.items():
+            if len(subset) < 2:
+                continue   # 클래스가 2개 미만이면 학습 불가
+            X = np.concatenate(list(subset.values()), axis=0)
+            y = np.concatenate([[label] * len(samples) for label, samples in subset.items()])
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    model = SVC(kernel="rbf", C=10, gamma="scale")
+                    model.fit(X, y)
+                self._fitted[subset_name] = model
+            except Exception as e:
+                print(f"[ml_models] SVM 학습 실패 ({subset_name}): {e}")
+
+    def is_ready(self, is_digit: bool) -> bool:
+        return ("digits" if is_digit else "letters") in self._fitted
+
+    def predict(self, vec: np.ndarray, is_digit: bool) -> str | None:
+        model = self._fitted.get("digits" if is_digit else "letters")
+        if model is None:
+            return None
+        try:
+            return str(model.predict(vec.reshape(1, -1))[0])
+        except Exception:
+            return None

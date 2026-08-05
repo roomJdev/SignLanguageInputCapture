@@ -81,9 +81,10 @@ from motion_calibration import (
     load_motion_calibration,
     run_motion_calibration,
 )
-from features import extract_tip_frame
+from features import extract, extract_tip_frame
 from hand_detector import HandDetector
 from sign_classifier import classify, classify_calibrated
+from ml_models import SVMClassifier
 from motion_classifier import (classify_motion, DTW_DISTANCE_THRESHOLD,
                                MOTION_TIP, MOTION_VEL_TRIGGER,
                                MOTION_MIN_FRAMES, MOTION_STOP_VEL, MOTION_STOP_COUNT,
@@ -221,6 +222,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
     current_letter = "?"
     symbol_mode = "letter"   # "letter" 또는 "number" — e 키로 전환
     cal_mode = "CALIBRATED" if cal_data else "RULE-BASED"
+    # 라이브 정적 인식 분류기 — 2026-08-05 파일럿 비교(kNN(custom) 75.9% vs SVM 82.9%)에 따라 SVM 채택.
+    # 보정 데이터가 없거나 SVM 학습이 안 되면(클래스 2개 미만 등) kNN(custom)/규칙 기반으로 폴백.
+    svm_classifier = SVMClassifier()
+    svm_classifier.fit(cal_data)
     print(f"수화 감지 시작 [{cal_mode}] — e: 철자/숫자 모드 전환  r: 재보정  t/y: 테스트  q: 종료")
 
     # 심볼별 속도 기반 모션 트래커
@@ -345,9 +350,13 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         if landmarks_list:
             lm = landmarks_list[0]
 
-            # 정적 분류
+            # 정적 분류 — SVM 우선, 미준비 시 kNN(custom)/규칙 기반으로 폴백
             if now >= motion_override_until:
-                if active_cal:
+                is_digit_mode = (symbol_mode == "number")
+                if svm_classifier.is_ready(is_digit_mode):
+                    pred = svm_classifier.predict(extract(lm), is_digit_mode)
+                    current_letter = pred if pred is not None else "?"
+                elif active_cal:
                     current_letter = classify_calibrated(lm, active_cal)
                 elif symbol_mode == "letter":
                     current_letter = classify(lm)
@@ -1222,6 +1231,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             cal_data = run_calibration(detector, camera_index)
             motion_cal_data = run_motion_calibration(detector, camera_index)
             cal_mode = "CALIBRATED" if cal_data else "RULE-BASED"
+            svm_classifier.fit(cal_data)
             # 보정 완료 후 프로필 이름 저장
             profile_name = run_text_input("Save calibration as (Enter to skip):")
             if profile_name:
@@ -1271,6 +1281,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if profile_result is not None:
                 _, cal_data, motion_cal_data = profile_result
                 cal_mode = "CALIBRATED" if cal_data else "RULE-BASED"
+                svm_classifier.fit(cal_data)
                 print(f"프로필 전환 완료 — [{cal_mode}]")
             current_letter = "?"
             for tracker in motion_trackers.values():
