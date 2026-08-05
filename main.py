@@ -207,6 +207,22 @@ def _ensure_ollama() -> None:
     print("[llm] Ollama 시작 실패 — ED fallback으로 동작합니다")
 
 
+def _inject_via_focus_switch(text: str) -> None:
+    """Cmd+Tab으로 타겟 앱에 포커스를 넘겨 실제로 타이핑한 뒤 OpenCV 창으로 복귀.
+
+    1/2/3 키·마우스 클릭으로 후보를 선택하려면 그 순간 OpenCV 창이 OS 포커스를 갖고 있어야
+    하는데, 포커스가 OpenCV 창에 있는 채로 그냥 injector.inject_string()을 호출하면 키스트로크가
+    OpenCV 창으로 가버려 타겟 앱엔 아무것도 찍히지 않는다(Word Injection 모드에서만 이 문제를
+    Cmd+Tab으로 해결해뒀던 것을 Guess/ED/LLM 모드에도 동일하게 적용).
+    """
+    import pyautogui as _pag
+    _pag.hotkey("command", "tab")   # 타겟 앱으로 포커스 복귀
+    time.sleep(0.2)
+    _pag.typewrite(text, interval=0.05)
+    time.sleep(0.1)
+    _pag.hotkey("command", "tab")   # OpenCV 창으로 복귀
+
+
 def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | None,
         camera_index: int, inject: bool = False, start_guess: bool = False,
         start_ed: bool = False, start_llm: bool = False,
@@ -386,7 +402,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                             if idx_sel < len(frozen):
                                 word = frozen[idx_sel]
                                 # guess_buffer는 외부 앱에 주입된 적 없으므로 단어 전체 주입
-                                injector.inject_string(word + " ")
+                                _inject_via_focus_switch(word + " ")
                                 text_buffer += word + " "
                                 guess_buffer = ""
                                 guess_candidates = []
@@ -937,7 +953,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             if action == "candidate" and guess_mode:
                 if arg < len(guess_candidates):
                     word = guess_candidates[arg]
-                    injector.inject_string(word + " ")
+                    _inject_via_focus_switch(word + " ")
                     text_buffer += word + " "
                     guess_buffer = ""
                     guess_candidates = []
@@ -948,10 +964,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                     print(f"[guess] 클릭 선택: {word}")
             elif action == "space" and guess_mode:
                 if guess_buffer:
-                    injector.inject_string(guess_buffer + " ")
+                    _inject_via_focus_switch(guess_buffer + " ")
                     text_buffer += guess_buffer + " "
                 else:
-                    injector.inject_string(" ")
+                    _inject_via_focus_switch(" ")
                     text_buffer += " "
                 guess_buffer = ""
                 guess_candidates = []
@@ -981,7 +997,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             elif action == "llm_candidate" and llm_mode:
                 if arg < len(llm_candidates):
                     word = llm_candidates[arg]
-                    injector.inject_string(word + " ")
+                    _inject_via_focus_switch(word + " ")
                     text_buffer += word + " "
                     llm_context += word + " "
                     llm_buffer = ""
@@ -1063,7 +1079,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             idx = key - ord("1")
             if idx < len(llm_candidates):
                 word = llm_candidates[idx]
-                injector.inject_string(word + " ")
+                _inject_via_focus_switch(word + " ")
                 text_buffer += word + " "
                 llm_context += word + " "
                 llm_buffer = ""
@@ -1087,7 +1103,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             idx = key - ord("1")
             if idx < len(ed_candidates):
                 word = ed_candidates[idx]
-                injector.inject_string(word + " ")
+                _inject_via_focus_switch(word + " ")
                 text_buffer += word + " "
                 ed_buffer = ""
                 ed_candidates = []
@@ -1103,13 +1119,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             idx = key - ord("1")
             if idx < len(wi_candidates):
                 word = wi_candidates[idx]
-                import pyautogui as _pag
-                import time as _time
-                _pag.hotkey("command", "tab")   # 타겟 앱으로 포커스 복귀
-                _time.sleep(0.2)
-                _pag.typewrite(word + " ", interval=0.05)
-                _time.sleep(0.1)
-                _pag.hotkey("command", "tab")   # OpenCV 창으로 복귀
+                _inject_via_focus_switch(word + " ")
                 text_buffer += word + " "
                 wi_buffer = ""
                 wi_candidates = []
@@ -1124,7 +1134,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
             idx = key - ord("1")
             if idx < len(guess_candidates):
                 word = guess_candidates[idx]
-                injector.inject_string(word + " ")
+                _inject_via_focus_switch(word + " ")
                 text_buffer += word + " "
                 guess_buffer = ""
                 guess_candidates = []
@@ -1146,8 +1156,10 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
                       f"({study_schedule[study_idx]['mode']}) -- \"{study_schedule[study_idx]['phrase']}\"")
             elif guess_mode:
                 if guess_buffer:
+                    _inject_via_focus_switch(guess_buffer + " ")
                     text_buffer += guess_buffer + " "
                 else:
+                    _inject_via_focus_switch(" ")
                     text_buffer += " "
                 guess_buffer = ""
                 guess_candidates = []
