@@ -69,11 +69,23 @@ SpellRing은 1,164개 단어에서 200개 문장(연습 100 + 테스트 100)을 
 
 ---
 
-## 3. 실험 설계: 모드 블록 + 참가자 간 순서 교대 (ED vs LLM, 2문장 x 2모드 = 4 trial)
+## 3. 실험 설계: 모드 블록 + 2×2 참가자 간 카운터밸런싱 (ED vs LLM, 2문장 x 2모드 = 4 trial)
 
-NASA-TLX를 트라이얼마다(4회)가 아니라 **모드당 1회(2회)**로 진행하기로 하면서, 같은 모드의 두 문장을 연달아 진행하는 "블록" 구조로 바꿨다. 대신 어느 모드 블록이 먼저 오는지는 참가자마다 교대시켜(between-participant counterbalancing) 순서 효과를 상쇄한다 — 참가자 수(N)가 1명을 넘어가는 시점부터는 문장 단위 ABBA보다 이 방식이 더 적합하다.
+NASA-TLX를 트라이얼마다(4회)가 아니라 **모드당 1회(2회)**로 진행하기로 하면서, 같은 모드의 두 문장을 연달아 진행하는 "블록" 구조로 바꿨다. 순서 효과(order effect)를 상쇄하기 위해 두 가지 요인을 **참가자 간(between-participant)**으로 카운터밸런싱한다 — 참가자 수(N)가 1명을 넘어가는 시점부터는 문장 단위 ABBA보다 이 방식이 더 적합하다:
 
-**참가자 1 (짝수번째, ED-first)**
+- **block_order** — 어느 모드 블록(ED/LLM)이 먼저 오는지
+- **phrase_order** — 각 블록 안에서 두 문장(ph1/ph2) 중 어느 게 먼저 오는지. 같은 참가자는 ED 블록과 LLM 블록 양쪽에 **항상 동일한 phrase_order**를 적용한다 — 그래야 ED vs LLM 비교 자체에는 문장-순서 효과가 섞이지 않고(양쪽에 똑같이 적용되어 상쇄), 대신 이 조합 자체를 참가자마다 순환시켜 문장-순서 효과를 참가자 간에 상쇄한다.
+
+두 요인을 곱하면 4개 조합이 나오고, **참가자 번호(1부터)를 4로 나눈 나머지로 4개 조합을 한 바퀴씩 순환** 배정한다:
+
+| 참가자 번호 | block_order | phrase_order |
+|---|---|---|
+| 1, 5, 9, ... | ed_first | ph1_first |
+| 2, 6, 10, ... | llm_first | ph1_first |
+| 3, 7, 11, ... | ed_first | ph2_first |
+| 4, 8, 12, ... | llm_first | ph2_first |
+
+**참가자 1 (ed_first, ph1_first) 예시**
 
 | Trial | 문장 | 모드 |
 |---|---|---|
@@ -84,18 +96,21 @@ NASA-TLX를 트라이얼마다(4회)가 아니라 **모드당 1회(2회)**로 �
 | 4 | P2: the food at this restaurant | LLM |
 | — | (LLM 블록 완료 → NASA-TLX #2) | |
 
-**참가자 2 (홀수번째, LLM-first)** — 위 표에서 ED/LLM 블록 순서만 반대.
+**참가자 3 (ed_first, ph2_first)**이라면 Trial 1/2가 P2→P1 순서로, LLM 블록도 동일하게 P2→P1 순서로 뒤집힌다.
+
+> **주의**: 참가자 수가 4의 배수가 아니면 네 조합이 완전히 균등하게 채워지지 않는다(예: N=10이면 ph1_first 조합이 ph2_first 조합보다 참가자 1~2명 더 많이 배정됨). block_order 쪽은 항상 정확히 반반으로 유지되지만, phrase_order 쪽 균형은 최종 참가자 수에 따라 달라질 수 있어 — 이 경우 report의 Limitations에 명시할 것.
 
 구현:
-- `study_mode.py`의 `SCHEDULE_ED_FIRST` / `SCHEDULE_LLM_FIRST`, `next_schedule()`이 기존 저장된 세션 수의 짝/홀에 따라 자동으로 교대 배정
-- `main.py`의 `run()`에 반자동 실험 모드로 통합(런처 → "ED vs LLM Study"). SPACE로 트라이얼 시작, ENTER로 제출 시 소요 시간·backspace 횟수·목표 문장과의 유사도(difflib)가 자동 계산되어 `data/study_results.json`에 세션 단위로 저장됨(참가자별 배정된 `block_order`도 함께 기록)
+- `study_mode.py`의 `combo_from_participant_number(n)`이 참가자 번호 → `(block_order, phrase_order)`를 반환, `build_schedule(block_order, phrase_order)`이 해당 4-trial 스케줄을 생성
+- 런처 → "ED vs LLM Study" 진입 시 참가자 이름/세션명 입력 다음에 **참가자 번호를 화면에서 직접 입력**받아 위 표대로 배정 (저장된 세션 파일 개수를 세는 방식이 아님 — 여러 컴퓨터에서 나눠 실행해도 참가자 번호만 미리 정해두면 항상 의도한 조합으로 배정됨)
+- `main.py`의 `run()`에 반자동 실험 모드로 통합. SPACE로 트라이얼 시작, ENTER로 제출 시 소요 시간·backspace 횟수·목표 문장과의 유사도(difflib)가 자동 계산되어 `data_phase2/study_results.json`에 세션 단위로 저장됨(참가자별 배정된 `block_order`/`phrase_order`도 함께 기록, Phase 1의 `data_new0803/`와는 분리된 폴더)
 - 모드 블록이 끝나는 시점(다음 트라이얼의 모드가 바뀌는 시점)에는 화면 배너가 "◯◯ 블록 완료 — NASA-TLX 작성 후 SPACE"로 바뀌어, 그때 별도 설문(종이/구글폼)으로 응답 후 계속 진행
 
 ---
 
 ## 4. 리포트 방법론 문구 (참고용)
 
-> Phrases were selected via the relative-entropy (KL divergence) minimization procedure of Paek & Hsu (2011), applied to the character-bigram distribution — the same information-theoretic method later used by Vertanen & Kristensson (2011) when curating their EnronMobile phrase set. We sampled a 2-phrase subset from the MacKenzie-Soukoreff (2003) phrase set (length-capped near the corpus mean of 28.6 characters to keep session duration manageable) whose bigram distribution best approximates the full 500-phrase corpus (KL divergence = 1.572 bits). The same MacKenzie-Soukoreff phrase set has been used in prior ASL fingerspelling text-entry evaluations (e.g., SpellRing, CHI 2025). Each participant typed both phrases in one mode (a block), then both phrases in the other mode, with NASA-TLX administered once per mode block. Block order (ED-first vs. LLM-first) was alternated across participants to counterbalance order effects.
+> Phrases were selected via the relative-entropy (KL divergence) minimization procedure of Paek & Hsu (2011), applied to the character-bigram distribution — the same information-theoretic method later used by Vertanen & Kristensson (2011) when curating their EnronMobile phrase set. We sampled a 2-phrase subset from the MacKenzie-Soukoreff (2003) phrase set (length-capped near the corpus mean of 28.6 characters to keep session duration manageable) whose bigram distribution best approximates the full 500-phrase corpus (KL divergence = 1.572 bits). The same MacKenzie-Soukoreff phrase set has been used in prior ASL fingerspelling text-entry evaluations (e.g., SpellRing, CHI 2025). Each participant typed both phrases in one mode (a block), then both phrases in the other mode, with NASA-TLX administered once per mode block. Two order factors were counterbalanced across participants in a 2×2 design, cycled by participant number: (1) block order (ED-first vs. LLM-first) and (2) phrase order within each block (phrase 1 first vs. phrase 2 first) — the same phrase order was used in both a given participant's ED and LLM blocks, so within-participant phrase-order effects cancel out of the ED-vs-LLM contrast, while cycling the combination across participants balances phrase-order effects across the sample. [If the final participant count was not a multiple of 4, note here that the four combinations were not perfectly balanced and by how much.]
 
 ---
 

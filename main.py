@@ -227,7 +227,8 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         camera_index: int, inject: bool = False, start_guess: bool = False,
         start_ed: bool = False, start_llm: bool = False,
         study_schedule: list[dict] | None = None, study_participant: str = "",
-        study_cal_profile: str = "Default", study_block_order: str = "ed_first") -> None:
+        study_cal_profile: str = "Default", study_block_order: str = "ed_first",
+        study_phrase_order: str = "ph1_first") -> None:
     if start_llm or (study_schedule and any(t["mode"] == "llm" for t in study_schedule)):
         _ensure_ollama()
     cap = cv2.VideoCapture(camera_index)
@@ -348,7 +349,7 @@ def run(detector: HandDetector, cal_data: dict | None, motion_cal_data: dict | N
         _first = study_schedule[0]
         ed_mode = (_first["mode"] == "ed")
         llm_mode = (_first["mode"] == "llm")
-        study_session = study_mode.start_session(study_participant, study_cal_profile, study_block_order)
+        study_session = study_mode.start_session(study_participant, study_cal_profile, study_block_order, study_phrase_order)
 
     # 백그라운드 로드 (첫 suggest 호출 전 미리 준비)
     word_suggester.preload()
@@ -1416,12 +1417,25 @@ def main() -> None:
 
         elif mode == "study":
             participant = args.participant or run_text_input("Enter participant name / number:")
-            schedule, block_order = study_mode.next_schedule()
-            print(f"[study] 이번 참가자 블록 순서: {block_order}")
+            # 블록 순서(ED/LLM 중 뭐가 먼저인지)와 문장 순서(블록 안에서 ph1/ph2 중 뭐가
+            # 먼저인지)를 study_results.json 세션 수(자동 카운트)가 아니라 여기서 직접 입력받는
+            # 참가자 번호로 결정한다 — 여러 컴퓨터(친구 노트북 등)에서 나눠 실행해도 참가자
+            # 번호만 미리 정해서 나눠주면 항상 의도한 조합으로 배정된다. 4명마다 (block_order,
+            # phrase_order) 4개 조합이 한 바퀴 순환한다 (study_mode.combo_from_participant_number).
+            participant_num_str = run_text_input(
+                "Enter participant NUMBER (1, 2, 3, ... - cycles ED/LLM-first x phrase order every 4):")
+            try:
+                participant_num = int(participant_num_str.strip())
+            except ValueError:
+                participant_num = 1
+                print("[study] 참가자 번호 입력이 유효하지 않아 1번(ED-first, ph1-first)으로 처리합니다.")
+            block_order, phrase_order = study_mode.combo_from_participant_number(participant_num)
+            schedule = study_mode.build_schedule(block_order, phrase_order)
+            print(f"[study] 참가자 번호 {participant_num} → 블록 순서: {block_order}, 문장 순서: {phrase_order}")
             run(detector, active_cal, active_motion_cal, camera_index,
                 inject=True, study_schedule=schedule,
                 study_participant=participant, study_cal_profile=profile_name,
-                study_block_order=block_order)
+                study_block_order=block_order, study_phrase_order=phrase_order)
 
         elif mode in ("test_ordered", "test_random"):
             randomize = (mode == "test_random")

@@ -45,31 +45,45 @@ STUDY_PHRASES = [
 ]
 
 
-def _block(mode: str) -> list[dict]:
-    return [{"phrase": p, "mode": mode} for p in STUDY_PHRASES]
+def _block(mode: str, phrase_order: str = "ph1_first") -> list[dict]:
+    phrases = STUDY_PHRASES if phrase_order == "ph1_first" else list(reversed(STUDY_PHRASES))
+    return [{"phrase": p, "mode": mode} for p in phrases]
 
 
-# 모드 블록 단위 스케줄 — 같은 모드의 문장 2개가 연달아 진행되어야
-# 블록이 끝난 시점에 NASA-TLX를 "모드당 1회"로 자연스럽게 물을 수 있다.
-SCHEDULE_ED_FIRST = _block("ed") + _block("llm")
-SCHEDULE_LLM_FIRST = _block("llm") + _block("ed")
-
-# 참가자 목록/세션 매니저에서 트라이얼 개수(len) 참조용 — 두 스케줄 길이는 동일
-STUDY_SCHEDULE = SCHEDULE_ED_FIRST
-
-RESULTS_PATH = "data_new0803/study_results.json"
+def build_schedule(block_order: str, phrase_order: str = "ph1_first") -> list[dict]:
+    """block_order/phrase_order 조합으로 4-trial 스케줄을 생성."""
+    first, second = ("ed", "llm") if block_order == "ed_first" else ("llm", "ed")
+    return _block(first, phrase_order) + _block(second, phrase_order)
 
 
-def next_schedule() -> tuple[list[dict], str]:
-    """다음 참가자에게 배정할 스케줄과 블록 순서 라벨을 반환.
+# 참가자 번호(1부터) → (block_order, phrase_order) 2×2 요인 배정, 4명마다 한 바퀴 순환.
+#   block_order  — 어느 모드 블록이 먼저 나오는지 (모드 간 순서 효과 상쇄)
+#   phrase_order — 각 블록 안에서 두 문장 중 어느 게 먼저 나오는지. 같은 참가자는 ED/LLM
+#                  양쪽 블록에 항상 동일한 phrase_order를 적용한다 — 그래야 ED vs LLM
+#                  비교 자체에는 문장-순서 효과가 섞이지 않고, 대신 참가자마다 이 조합을
+#                  순환시켜 문장-순서 효과를 참가자 간에 상쇄한다.
+# 참가자 수가 4의 배수가 아니면 네 조합이 완전히 균등하게 채워지지 않는다 — 이 경우
+# report의 Limitations에 명시.
+_PARTICIPANT_COMBOS = [
+    ("ed_first", "ph1_first"),
+    ("llm_first", "ph1_first"),
+    ("ed_first", "ph2_first"),
+    ("llm_first", "ph2_first"),
+]
 
-    저장된 세션 수의 짝/홀에 따라 ED-first / LLM-first를 교대시켜
-    참가자 간 모드-순서 효과를 상쇄한다(between-participant counterbalancing).
-    """
-    n_prior = len(_load_results())
-    if n_prior % 2 == 0:
-        return SCHEDULE_ED_FIRST, "ed_first"
-    return SCHEDULE_LLM_FIRST, "llm_first"
+
+def combo_from_participant_number(n: int) -> tuple[str, str]:
+    """참가자 번호(1부터 시작) → (block_order, phrase_order)."""
+    return _PARTICIPANT_COMBOS[(n - 1) % 4]
+
+
+# 참가자 목록/세션 매니저에서 트라이얼 개수(len) 참조용 (모든 조합이 항상 4-trial)
+STUDY_SCHEDULE = build_schedule("ed_first", "ph1_first")
+
+# Phase 1(분류기 비교)의 data_new0803/과 완전히 분리된 Phase 2 전용 저장 경로.
+# 보정(calibration) 데이터는 그대로 data_new0803/에 저장됨 (calibration.py/calibration_profiles.py) —
+# study 세션 결과와 설문 응답만 별도 폴더로 분리.
+RESULTS_PATH = "data_phase2/study_results.json"
 
 
 def similarity(typed: str, target: str) -> float:
@@ -95,13 +109,14 @@ def _write_results(sessions: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def start_session(participant: str, cal_profile: str = "Default",
-                   block_order: str = "ed_first") -> dict:
+                   block_order: str = "ed_first", phrase_order: str = "ph1_first") -> dict:
     """새 study 세션을 시작하고, 결과 파일에 빈 세션을 즉시 등록한다 (세션 시작 시점부터 존재)."""
     session = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "participant": participant,
         "cal_profile": cal_profile,
         "block_order": block_order,
+        "phrase_order": phrase_order,
         "trials": [],
     }
     sessions = _load_results()
@@ -153,10 +168,11 @@ def list_study_sessions() -> None:
         participant = session.get("participant") or "(미입력)"
         profile = session.get("cal_profile") or "Default"
         order = session.get("block_order") or "ed_first"
+        phr_order = session.get("phrase_order") or "ph1_first"
         n = len(trials)
         avg_sim = sum(t["similarity_ratio"] for t in trials) / n if n else 0.0
         print(f"  [{i}] {session['timestamp']}  참가자: {participant}  보정: {profile}  "
-              f"순서: {order}  트라이얼: {n}/{len(STUDY_SCHEDULE)}  평균 유사도: {avg_sim:.2f}")
+              f"순서: {order}/{phr_order}  트라이얼: {n}/{len(STUDY_SCHEDULE)}  평균 유사도: {avg_sim:.2f}")
 
 
 def delete_study_session(index: int) -> None:
@@ -185,6 +201,7 @@ def _run_study_detail(session: dict) -> None:
     participant = session.get("participant") or "(미입력)"
     profile = session.get("cal_profile") or "Default"
     order = session.get("block_order") or "ed_first"
+    phr_order = session.get("phrase_order") or "ph1_first"
 
     cv2.namedWindow("Study Session Detail")
 
@@ -192,7 +209,7 @@ def _run_study_detail(session: dict) -> None:
         canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
         cv2.putText(canvas, "ED vs LLM Study — Session Detail", (24, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, _GREEN_BRIGHT, 2)
-        info_line = f"{session['timestamp']}   participant: {participant}   cal: {profile}   order: {order}"
+        info_line = f"{session['timestamp']}   participant: {participant}   cal: {profile}   order: {order}/{phr_order}"
         cv2.putText(canvas, info_line, (24, 66),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, _GREEN_MID, 1)
         cv2.line(canvas, (24, 78), (canvas_w - 24, 78), _GREEN_DIM, 1)

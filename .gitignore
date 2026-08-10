@@ -16,6 +16,7 @@ build/
 data/
 data_new0731/
 data_new0803/
+data_phase2/
 
 # IDE
 .idea/
