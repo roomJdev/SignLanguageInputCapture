@@ -88,13 +88,13 @@ python main.py
 | `nasa_tlx_q6` | Frustration |
 | `custom_survey_q1`~`q5` | Preference survey (아래 참고) — **양쪽 블록이 다 끝난 뒤 1회만 답하는 설문이라, 두 번째(마지막) 블록 행에만 채우고 첫 번째 블록 행은 비워둡니다** |
 
-NASA-TLX 6개 항목은 표준 방식대로 각각 0~100(또는 1~21) 척도로 응답받으면 됩니다. Preference survey 문항:
+NASA-TLX 6개 항목은 원조 공식 스펙(NASA-TLX v1.0, §2.3) 그대로 **각 항목당 0~100 사이를 5단위로 나눈 21단계**(0, 5, 10, ..., 100)로 응답받습니다. 참가자에게는 Low~High(Performance만 Good~Poor) 사이 선 위에 표시하게 하고, 그 값을 5의 배수로 반올림해서 CSV에 기록하면 됩니다. Preference survey 문항:
 
 1. Which mode did you prefer overall? (ED / LLM / No preference)
 2. Preference strength — 7-point scale: Strongly prefer ED ↔ Strongly prefer LLM
 3. Which mode's suggestions felt more relevant or natural? (ED / LLM / No difference)
 4. Which mode was easier to use overall? (ED / LLM / No difference)
-5. [Open-ended] Why did you prefer that mode?
+5. Open-ended: why did you prefer that mode?
 
 `survey_responses.csv`에는 예시 행(`participant_number=0`)이 들어있습니다 — 실제 데이터 입력 전에 지우고 사용하세요.
 
